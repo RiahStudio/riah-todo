@@ -86,6 +86,23 @@ Right-click the tray icon → **Settings** to change that:
 
   Leave it blank and no trail is written. The JSON archive happens either way.
 
+## Accessibility
+
+**The board is the accessible surface. Use it if the note doesn't work for you.**
+Everything the note does, the board does: `Open The Board.bat`, or
+<http://127.0.0.1:8779>.
+
+On the board: every control is reachable by keyboard and visible on focus, not
+just on hover. **Alt+Up / Alt+Down** reorders a task without dragging. Errors and
+saves are announced. Targets are at least 26px and text meets WCAG AA contrast in
+both themes.
+
+The tray note is a deliberately small, hand-drawn window — the rows are painted,
+not real controls, so **a screen reader cannot see them and Tab does not move
+between them.** That is a real limit, not an oversight: it buys the note its size
+and speed. Keyboard inside the note covers adding (type, Enter) and closing
+(Esc). Anything more, use the board.
+
 ## Where the list lives
 
 ```
