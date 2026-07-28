@@ -146,6 +146,48 @@ $script:LongAgo   = (Get-Date).AddDays(-1)
 
 function New-Id { return [guid]::NewGuid().ToString() }
 
+# --- cross-process lock (same protocol as lib/store.mjs) ---
+# An atomic rename stops a torn READ. It does nothing about two writers who both
+# read "3 items", both add one, and both write "4" -- one task is simply gone.
+# Every read-modify-write here takes this lock, and so does the Node side. Keep
+# the two in step: same lock file, same stale window.
+$script:LockStaleMs = 10000
+$script:LockHandle = $null
+
+function Enter-StoreLock([int]$timeoutMs = 5000) {
+  $lock = $script:StorePath + '.lock'
+  $started = Get-Date
+  while ($true) {
+    try {
+      $script:LockHandle = [System.IO.File]::Open($lock, 'CreateNew', 'Write', 'None')
+      return $true
+    } catch {
+      # A lock left by something that died must not block the note for ever.
+      try {
+        $age = ((Get-Date).ToUniversalTime() - (Get-Item -LiteralPath $lock -Force).LastWriteTimeUtc).TotalMilliseconds
+        if ($age -gt $script:LockStaleMs) {
+          Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
+          continue
+        }
+      } catch {}
+      if (((Get-Date) - $started).TotalMilliseconds -gt $timeoutMs) {
+        # Better to write unlocked than to refuse Captain a tick.
+        Write-TrayLog 'lock_timeout: proceeding without it'
+        return $false
+      }
+      Start-Sleep -Milliseconds 15
+    }
+  }
+}
+
+function Exit-StoreLock {
+  if ($script:LockHandle) {
+    try { $script:LockHandle.Dispose() } catch {}
+    $script:LockHandle = $null
+  }
+  try { Remove-Item -LiteralPath ($script:StorePath + '.lock') -Force -ErrorAction SilentlyContinue } catch {}
+}
+
 function Read-Store {
   # A missing, empty, or half-written file is an empty list -- never a crash and
   # never a dialog. The next good write repairs it.
@@ -178,8 +220,37 @@ function Read-Store {
   } catch {
     Write-TrayLog ('read_fail ' + $_.Exception.Message)
   }
+  $threaded = @(Invoke-Thread @($items.ToArray()))
+  # A file that plainly contains work but parsed to nothing is the shape of the
+  # 2026-07-29 00:21 incident: three open priorities on disk, "items=0" in the
+  # log, no exception. Never accept that quietly -- say so, and try once more.
+  if ($threaded.Count -eq 0 -and $raw -and $raw -match '"label"') {
+    Write-TrayLog 'read_suspect: file contains labels but nothing parsed - retrying'
+    Start-Sleep -Milliseconds 150
+    try {
+      $retry = [System.IO.File]::ReadAllText($script:StorePath)
+      $again = New-Object System.Collections.ArrayList
+      foreach ($it in @(($retry | ConvertFrom-Json).items)) {
+        if ($null -eq $it) { continue }
+        $label = ''
+        try { $label = ([string]$it.label).Trim() } catch {}
+        if (-not $label) { continue }
+        [void]$again.Add(@{
+          id = $(if ($it.id) { [string]$it.id } else { New-Id })
+          label = $label
+          completed = [bool]$it.completed
+          completedAt = $(if ($it.completedAt) { [string]$it.completedAt } else { $null })
+          parentId = $(if ($it.parentId) { [string]$it.parentId } else { $null })
+        })
+      }
+      $threaded = @(Invoke-Thread @($again.ToArray()))
+      Write-TrayLog ('read_retry recovered=' + $threaded.Count)
+    } catch {
+      Write-TrayLog ('read_retry_fail ' + $_.Exception.Message)
+    }
+  }
   # Yesterday's unfinished work is still today's work: carry it and restamp.
-  return @{ date = $today; items = @(Invoke-Thread @($items.ToArray())) }
+  return @{ date = $today; items = $threaded }
 }
 
 function Invoke-Thread($items) {
@@ -253,6 +324,22 @@ function Get-TopLevel {
 
 function Write-Store($list) {
   try {
+    # THE GUARD. Losing a day's priorities is the one unacceptable failure here,
+    # and the only way it can happen is a bad read turning into a good write. So:
+    # never let an empty in-memory list flatten a file that still has work in it.
+    # Deliberate emptying (removing the last item, clearing finished) sets
+    # $script:AllowEmptyWrite for exactly one write.
+    if (@($list.items).Count -eq 0 -and -not $script:AllowEmptyWrite) {
+      if (Test-Path -LiteralPath $script:StorePath) {
+        $onDisk = ''
+        try { $onDisk = [System.IO.File]::ReadAllText($script:StorePath) } catch {}
+        if ($onDisk -and $onDisk -match '"label"') {
+          Write-TrayLog 'write_blocked: refusing to overwrite a non-empty list with an empty one'
+          return $false
+        }
+      }
+    }
+    $script:AllowEmptyWrite = $false
     $dir = Split-Path -Parent $script:StorePath
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $rows = @()
@@ -409,6 +496,9 @@ function Invoke-Sweep($list) {
     }
   }
   if ($gone.Count -eq 0) { return $false }
+  # Filing everything is a real, deliberate empty list -- the work is archived,
+  # not lost.
+  if ($keep.Count -eq 0) { $script:AllowEmptyWrite = $true }
   $list.items = @($keep.ToArray())
   Add-Filed @($gone.ToArray())
   return $true
@@ -449,7 +539,7 @@ function Set-Flash([string]$msg) {
   $script:FlashUntil = (Get-Date).AddSeconds(4)
 }
 
-function Add-Priority([string]$label, [string]$parentId = $null) {
+function Add-PriorityUnlocked([string]$label, [string]$parentId = $null) {
   $value = ([string]$label).Trim()
   if (-not $value) { return }
   if ($value.Length -gt $script:MaxLabel) { $value = $value.Substring(0, $script:MaxLabel) }
@@ -474,7 +564,7 @@ function Add-Priority([string]$label, [string]$parentId = $null) {
   Refresh-Note
 }
 
-function Rename-Priority([string]$id, [string]$label) {
+function Rename-PriorityUnlocked([string]$id, [string]$label) {
   $value = ([string]$label).Trim()
   if (-not $value) { return }
   if ($value.Length -gt $script:MaxLabel) { $value = $value.Substring(0, $script:MaxLabel) }
@@ -485,7 +575,7 @@ function Rename-Priority([string]$id, [string]$label) {
   Refresh-Note
 }
 
-function Toggle-Priority([string]$id) {
+function Toggle-PriorityUnlocked([string]$id) {
   # Ticking a task ticks its whole thread; ticking the last open step finishes
   # the task; reopening any step reopens it. Mirrors setDone() in lib/store.mjs.
   [void](Sync-List $true)
@@ -522,7 +612,7 @@ function Toggle-Priority([string]$id) {
   Refresh-Note
 }
 
-function Move-Before([string]$id, [string]$beforeId) {
+function Move-BeforeUnlocked([string]$id, [string]$beforeId) {
   # Drag a task above another one. Its subtasks travel with it.
   [void](Sync-List $true)
   $item = $null
@@ -546,7 +636,7 @@ function Move-Before([string]$id, [string]$beforeId) {
   Refresh-Note
 }
 
-function Set-Parent([string]$id, [string]$parentId) {
+function Set-ParentUnlocked([string]$id, [string]$parentId) {
   [void](Sync-List $true)
   $item = $null
   foreach ($i in @($script:List.items)) { if ($i.id -eq $id) { $item = $i; break } }
@@ -573,8 +663,10 @@ function Set-Parent([string]$id, [string]$parentId) {
   Refresh-Note
 }
 
-function Remove-Priority([string]$id) {
+function Remove-PriorityUnlocked([string]$id) {
   [void](Sync-List $true)
+  # Removing the last item is a real, deliberate empty list.
+  $script:AllowEmptyWrite = $true
   $keep = New-Object System.Collections.ArrayList
   # A task takes its subtasks with it -- leaving them behind would silently
   # promote work Captain thought he had just deleted.
@@ -584,6 +676,28 @@ function Remove-Priority([string]$id) {
   $script:List.items = @($keep.ToArray())
   [void](Write-Store $script:List)
   Refresh-Note
+}
+
+# Every change is read-modify-write, so each one holds the lock across BOTH
+# halves. The bodies above are deliberately lock-free: one place takes the lock,
+# one place releases it, and an early return still releases because of finally.
+function Add-Priority([string]$label, [string]$parentId = $null) {
+  [void](Enter-StoreLock); try { Add-PriorityUnlocked $label $parentId } finally { Exit-StoreLock }
+}
+function Rename-Priority([string]$id, [string]$label) {
+  [void](Enter-StoreLock); try { Rename-PriorityUnlocked $id $label } finally { Exit-StoreLock }
+}
+function Toggle-Priority([string]$id) {
+  [void](Enter-StoreLock); try { Toggle-PriorityUnlocked $id } finally { Exit-StoreLock }
+}
+function Move-Before([string]$id, [string]$beforeId) {
+  [void](Enter-StoreLock); try { Move-BeforeUnlocked $id $beforeId } finally { Exit-StoreLock }
+}
+function Set-Parent([string]$id, [string]$parentId) {
+  [void](Enter-StoreLock); try { Set-ParentUnlocked $id $parentId } finally { Exit-StoreLock }
+}
+function Remove-Priority([string]$id) {
+  [void](Enter-StoreLock); try { Remove-PriorityUnlocked $id } finally { Exit-StoreLock }
 }
 
 # --- look: the Riah interface signature, drawn ---
@@ -1339,10 +1453,8 @@ $popup.add_Paint({
     }
   }
 
-  if ($items.Count -eq 0) {
-    $emptyY = $PAD + (Get-HeadHeight $g) + $TALLY_H
-    [void]$g.DrawString('Type below to name what today is for.', $F.Row, $bDim, $PAD, $emptyY)
-  }
+  # Empty means empty. The box below already says "Add a priority"; saying it
+  # twice in a fuller sentence was overexplaining. (Captain, 2026-07-29.)
 
   # Add box chrome (the real TextBox sits inside this rectangle)
   Layout-AddBox
@@ -1676,6 +1788,7 @@ $miClear.add_Click({
     if ($i.completed) { [void]$gone.Add($i) } else { [void]$keep.Add($i) }
   }
   if ($gone.Count -eq 0) { Set-Flash 'Nothing finished yet.'; Refresh-Note; return }
+  if ($keep.Count -eq 0) { $script:AllowEmptyWrite = $true }
   $script:List.items = @($keep.ToArray())
   Add-Filed @($gone.ToArray())
   [void](Write-Store $script:List)
@@ -1748,6 +1861,24 @@ try {
   $notify.ShowBalloonTip(4000)
 } catch { Write-TrayLog ('balloon_fail ' + $_.Exception.Message) }
 
+function Test-ShotHasContent($bmp) {
+  # A real note has a pink wordmark, ink text and a rule. One colour across the
+  # whole sample means the capture failed, whatever the API returned.
+  try {
+    $seen = @{}
+    for ($x = 2; $x -lt $bmp.Width; $x += 9) {
+      for ($y = 2; $y -lt $bmp.Height; $y += 9) {
+        $p = $bmp.GetPixel($x, $y)
+        $seen[('{0},{1},{2}' -f $p.R, $p.G, $p.B)] = $true
+        if ($seen.Count -ge 5) { return $true }
+      }
+    }
+    return $false
+  } catch {
+    return $false
+  }
+}
+
 if ($script:ShotPath) {
   # Draw the note exactly as Captain would see it and write it to a file, so the
   # look can be checked without anyone driving the mouse.
@@ -1796,6 +1927,21 @@ if ($script:ShotPath) {
       }
       if (-not $shotDone) {
         $popup.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $popup.Width, $popup.Height)))
+      }
+      # PrintWindow can return TRUE and still hand back an all-black bitmap when
+      # the window is not being composited. Three of four shots on 2026-07-29
+      # were solid black and the smoke called them a pass. So check the pixels,
+      # and fall back to DrawToBitmap rather than saving a lie.
+      if (-not (Test-ShotHasContent $bmp)) {
+        Write-TrayLog 'shot_blank: PrintWindow gave an empty image - falling back to DrawToBitmap'
+        $popup.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 200
+        $popup.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $popup.Width, $popup.Height)))
+      }
+      if (-not (Test-ShotHasContent $bmp)) {
+        $bmp.Dispose()
+        throw 'the note drew nothing - every pixel came back the same colour'
       }
       $bmp.Save($script:ShotPath, [System.Drawing.Imaging.ImageFormat]::Png)
       $bmp.Dispose()

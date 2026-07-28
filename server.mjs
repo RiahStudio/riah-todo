@@ -35,6 +35,37 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+/**
+ * Refuse anything a web page could aim at this server.
+ *
+ * A loopback server is reachable by every site the browser has open. Without
+ * this, `fetch("http://127.0.0.1:8779/api/add", {method:"POST", body:...})` from
+ * any page rewrites Captain's list — proved on 2026-07-29 with a `text/plain`
+ * POST carrying a foreign Origin, which sails past CORS preflight entirely
+ * because it is a "simple request".
+ *
+ * Two gates, both required for state-changing routes:
+ *   1. An Origin, if present, must be this server. Cross-site fetches always
+ *      carry one; the board's own fetches carry ours.
+ *   2. The content type must be application/json, which a form or a simple
+ *      request cannot set without triggering a preflight we never answer.
+ */
+function sameOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true; // curl, the tray's health check, a local script.
+  const allowed = [
+    `http://127.0.0.1:${PORT}`,
+    `http://localhost:${PORT}`,
+    `http://[::1]:${PORT}`,
+  ];
+  return allowed.includes(origin.toLowerCase());
+}
+
+function jsonRequest(req) {
+  const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  return type === "application/json";
+}
+
 async function readBody(req) {
   const chunks = [];
   let size = 0;
@@ -78,6 +109,14 @@ async function handleApi(req, res, urlPath) {
     sendJson(res, 405, { ok: false, error: "Method not allowed." });
     return;
   }
+  if (!sameOrigin(req)) {
+    sendJson(res, 403, { ok: false, error: "This list only takes changes from its own page." });
+    return;
+  }
+  if (!jsonRequest(req)) {
+    sendJson(res, 415, { ok: false, error: "Changes must be sent as application/json." });
+    return;
+  }
   const body = await readBody(req);
   switch (urlPath) {
     case "/api/add":
@@ -117,6 +156,14 @@ async function handleApi(req, res, urlPath) {
 
 const server = http.createServer((req, res) => {
   const urlPath = new URL(req.url || "/", `http://${HOST}`).pathname;
+  // DNS rebinding: a hostile name can resolve to 127.0.0.1 and then read the
+  // page and the list as same-origin. Only answer to loopback names.
+  const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+  if (host && !["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) {
+    res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Riah To-Do only answers on localhost.");
+    return;
+  }
   if (urlPath.startsWith("/api/")) {
     handleApi(req, res, urlPath).catch((error) => {
       // A rejected change is a message, not a stack trace: the board shows this

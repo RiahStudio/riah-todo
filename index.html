@@ -17,7 +17,9 @@
     --raised: #18181C;
     --ink: #EDEDEF;
     --body: #9A9AA2;
-    --dim: #77777F;
+    /* Was #77777F — 4.14:1 on the page background, under the 4.5:1 AA floor for
+       body text. This clears it without losing the muted feel. */
+    --dim: #8B8B93;
     --rule: rgba(255, 255, 255, 0.12);
     --rule-strong: rgba(255, 255, 255, 0.16);
     --rule-hard: #EDEDEF;
@@ -36,7 +38,7 @@
     --raised: #EEEBEA;
     --ink: #181719;
     --body: #5F5D63;
-    --dim: #77737B;
+    --dim: #6B6870;
     --rule: rgba(24, 23, 25, 0.13);
     --rule-strong: rgba(24, 23, 25, 0.2);
     --rule-hard: #181719;
@@ -111,8 +113,9 @@
 
   .tick {
     flex: none;
-    width: 22px;
-    height: 22px;
+    /* 26px, not 22 — WCAG 2.2 AA (2.5.8) wants a 24px minimum target. */
+    width: 26px;
+    height: 26px;
     border: 1.5px solid var(--rule-strong);
     border-radius: 5px;
     background: transparent;
@@ -154,8 +157,11 @@
     opacity: 0;
     transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
   }
-  li:hover .kill { opacity: 1; }
+  /* Hover-only controls are invisible to a keyboard. Anything that appears on
+     hover must also appear when something inside the row has focus. */
+  li:hover .kill, li:focus-within .kill { opacity: 1; }
   .kill:hover { color: var(--discard); background: var(--raised); }
+  .kill:focus-visible, .sub:focus-visible { opacity: 1; }
 
   .add { display: flex; gap: 8px; padding: 16px 0 0; }
   .add input {
@@ -225,8 +231,11 @@
     opacity: 0;
     transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
   }
-  li:hover .sub { opacity: 1; }
+  li:hover .sub, li:focus-within .sub { opacity: 1; }
   .sub:hover { color: var(--pink); background: var(--raised); }
+
+  .grip:focus-visible { opacity: 1; }
+  li:hover .grip, li:focus-within .grip { opacity: 1; }
 
   .subform { display: flex; gap: 8px; margin: 6px 0 10px 30px; }
   .subform input {
@@ -238,6 +247,19 @@
     background: var(--surface);
     color: var(--ink);
     font: 400 0.9rem/1 var(--font-ui);
+  }
+
+  /* Announcements for screen readers only — visible layout is unchanged. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .settings {
@@ -322,7 +344,8 @@
     <button type="submit" id="addBtn" disabled>Add</button>
   </form>
 
-  <div class="error" id="error" hidden></div>
+  <div class="error" id="error" role="alert" hidden></div>
+  <div id="live" class="sr-only" role="status" aria-live="polite"></div>
 
   <section class="settings" id="settings">
     <div class="settings-head">
@@ -361,7 +384,7 @@
   </section>
 
   <footer>
-    <span id="hint">Click the box to tick it off. Click the words to rename. Drag to reorder.</span>
+    <span id="hint">Click the box to tick it off. Click the words to rename. Drag, or Alt+Up / Alt+Down, to reorder.</span>
     <button type="button" id="theme">Light / dark</button>
   </footer>
 </main>
@@ -387,9 +410,19 @@
     localStorage.setItem("riah-todo-theme", next);
   });
 
+  const liveEl = document.getElementById("live");
+
+  /** Announce something to a screen reader without putting it on screen. */
+  function say(message) {
+    liveEl.textContent = "";
+    // Same text twice in a row is otherwise not re-announced.
+    requestAnimationFrame(() => { liveEl.textContent = message; });
+  }
+
   function showError(message) {
     errorEl.textContent = message;
     errorEl.hidden = !message;
+    if (message) say(message);
   }
 
   async function call(path, body) {
@@ -486,10 +519,22 @@
     label.className = "label";
     label.textContent = item.label;
     label.tabIndex = 0;
-    label.title = "Click to rename";
+    // It behaves like a button that opens an editor, so it has to say so.
+    label.setAttribute("role", "button");
+    label.setAttribute("aria-label", `Rename ${item.label}`);
+    label.title = "Click to rename. Alt+Up / Alt+Down to move it.";
     label.addEventListener("click", () => startRename(label, item));
     label.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") { event.preventDefault(); startRename(label, item); }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        startRename(label, item);
+        return;
+      }
+      // Dragging is not available to a keyboard, so reordering needs its own way in.
+      if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        moveByKeyboard(item, event.key === "ArrowUp" ? -1 : 1);
+      }
     });
 
     const kill = document.createElement("button");
@@ -571,6 +616,26 @@
     });
   }
 
+  /** Alt+Up / Alt+Down: the keyboard's version of dragging a task. */
+  async function moveByKeyboard(item, direction) {
+    const tasks = state.items.filter((entry) => !entry.parentId);
+    if (item.parentId) {
+      say("Subtasks move with their task. Move the task instead.");
+      return;
+    }
+    const at = tasks.findIndex((entry) => entry.id === item.id);
+    const to = at + direction;
+    if (to < 0 || to >= tasks.length) { say(`"${item.label}" is already ${direction < 0 ? "first" : "last"}.`); return; }
+    // Moving down means landing above the task after the one we swap with.
+    const beforeId = direction < 0 ? tasks[to].id : (tasks[to + 1]?.id ?? null);
+    await run("/api/move", { id: item.id, beforeId });
+    say(`Moved "${item.label}" ${direction < 0 ? "up" : "down"}.`);
+    // Keep focus where the eye is.
+    requestAnimationFrame(() => {
+      listEl.querySelector(`li[data-id="${item.id}"] .label`)?.focus();
+    });
+  }
+
   // --- settings ---
   const fileAfterEl = document.getElementById("fileAfter");
   const vaultPathEl = document.getElementById("vaultPath");
@@ -602,6 +667,7 @@
       }));
       settingsTouched = false;
       savedEl.hidden = false;
+      say("Settings saved.");
       setTimeout(() => { savedEl.hidden = true; }, 2500);
     } catch (error) {
       showError(error.message);

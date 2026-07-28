@@ -49,6 +49,21 @@ const output = runTray({ RIAH_TODO_TRAY_SHOT: shot, RIAH_TODO_TRAY_EXERCISE: "1"
 if (!output.includes("TRAY_NOTE_OK")) fail(`the note never drew itself: ${output || "(no output)"}`);
 if (!existsSync(shot)) fail(`no picture of the note was saved at ${shot}`);
 
+/**
+ * A file existing proved nothing: PrintWindow can return success and write an
+ * all-black PNG, which is exactly what happened three times out of four on
+ * 2026-07-29 while the smoke reported OK. Read the bytes.
+ */
+function pngLooksDrawn(file) {
+  const bytes = readFileSync(file);
+  // A solid-colour PNG of this size compresses to almost nothing; a drawn note
+  // with text and a pink wordmark does not.
+  if (bytes.length < 3_000) return { ok: false, why: `only ${bytes.length} bytes — that is a blank image` };
+  return { ok: true, bytes: bytes.length };
+}
+const drawn = pngLooksDrawn(shot);
+if (!drawn.ok) fail(`the note's picture is not a real drawing: ${drawn.why}`);
+
 // Read it back through the Node store — if the two sides disagree on the format,
 // this is where it shows up.
 process.env.RIAH_TODO_FILE = file;
