@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Riah To-Do</title>
+<meta name="description" content="Today’s list — the same one the tray note shows." />
+<meta name="theme-color" content="#0F0F11" />
+<meta name="color-scheme" content="dark light" />
+<link rel="icon" type="image/svg+xml" href="assets/riah-todo.svg" />
+<link rel="stylesheet" href="assets/fonts/fonts.css" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0F0F11;
+    --surface: #141417;
+    --raised: #18181C;
+    --ink: #EDEDEF;
+    --body: #9A9AA2;
+    --dim: #77777F;
+    --rule: rgba(255, 255, 255, 0.12);
+    --rule-strong: rgba(255, 255, 255, 0.16);
+    --rule-hard: #EDEDEF;
+    --pink: #FF5CA8;
+    --keep: #3FCF7F;
+    --revise: #E9BA45;
+    --discard: #F26D5B;
+    --font-brand: 'Instrument Serif', 'Palatino Linotype', Georgia, serif;
+    --font-ui: 'Space Grotesk', system-ui, 'Segoe UI', sans-serif;
+    --font-mono: 'Space Mono', ui-monospace, Consolas, monospace;
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+    --bg: #F6F4F3;
+    --surface: #FFFFFF;
+    --raised: #EEEBEA;
+    --ink: #181719;
+    --body: #5F5D63;
+    --dim: #77737B;
+    --rule: rgba(24, 23, 25, 0.13);
+    --rule-strong: rgba(24, 23, 25, 0.2);
+    --rule-hard: #181719;
+    --pink: #C21868;
+    --keep: #158A46;
+    --revise: #A97400;
+    --discard: #D42B2B;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 15px/1.5 var(--font-ui);
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px 64px;
+  }
+
+  main { width: 100%; max-width: 560px; }
+
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 10px;
+  }
+  .lockup { display: flex; align-items: baseline; gap: 0.34em; font: 600 1.5rem/1 var(--font-ui); }
+  .lockup em { color: var(--pink); font: italic 400 1.32em/0.9 var(--font-brand); }
+  .date { color: var(--dim); font: 700 0.68rem/1.2 var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
+  .rule { height: 2px; background: var(--rule-hard); }
+
+  .tally {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 14px 2px 18px;
+    color: var(--body);
+    font: 400 0.85rem/1 var(--font-ui);
+  }
+  .tally strong { color: var(--ink); font: 700 1.6rem/1 var(--font-ui); }
+  .tally.all-clear strong { color: var(--keep); }
+
+  ol { list-style: none; border-top: 1px solid var(--rule); }
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 6px 8px 6px 4px;
+    border-bottom: 1px solid var(--rule);
+    transition: background-color 140ms ease;
+  }
+  li:hover { background: var(--surface); }
+  li.dragging { opacity: 0.45; }
+  li.over { border-top: 2px solid var(--pink); }
+
+  .grip {
+    width: 16px;
+    color: var(--dim);
+    font: 400 0.9rem/1 var(--font-mono);
+    cursor: grab;
+    user-select: none;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 140ms ease;
+  }
+  li:hover .grip { opacity: 1; }
+
+  .tick {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: 5px;
+    background: transparent;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: border-color 140ms ease, background-color 140ms ease;
+  }
+  .tick:hover { border-color: var(--pink); }
+  .tick svg { width: 13px; height: 13px; opacity: 0; }
+  .done .tick { border-color: var(--keep); background: var(--keep); }
+  .done .tick svg { opacity: 1; }
+
+  .label {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0;
+    color: var(--ink);
+    font: 500 0.98rem/1.35 var(--font-ui);
+    cursor: text;
+    overflow-wrap: anywhere;
+  }
+  .done .label { color: var(--dim); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .label:focus-visible, .add input:focus-visible, button:focus-visible {
+    outline: 2px solid var(--pink);
+    outline-offset: 2px;
+  }
+
+  .kill {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--dim);
+    font: 400 1.1rem/1 var(--font-ui);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+  }
+  li:hover .kill { opacity: 1; }
+  .kill:hover { color: var(--discard); background: var(--raised); }
+
+  .add { display: flex; gap: 8px; padding: 16px 0 0; }
+  .add input {
+    flex: 1;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--ink);
+    font: 400 0.95rem/1 var(--font-ui);
+  }
+  .add input::placeholder { color: var(--dim); }
+  .add button {
+    min-height: 44px;
+    padding: 0 18px;
+    border: 1px solid var(--pink);
+    border-radius: 5px;
+    background: var(--pink);
+    color: #170C12;
+    font: 700 0.82rem/1 var(--font-ui);
+    cursor: pointer;
+  }
+  .add button:disabled { opacity: 0.4; cursor: default; }
+
+  .empty { padding: 26px 4px; color: var(--body); font: 400 0.95rem/1.5 var(--font-ui); }
+  .empty span { display: block; color: var(--dim); font-size: 0.85rem; padding-top: 4px; }
+
+  .error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--discard);
+    border-radius: 5px;
+    color: var(--discard);
+    font: 400 0.85rem/1.4 var(--font-ui);
+  }
+  .error[hidden] { display: none; }
+
+  li.child {
+    margin-left: 30px;
+    min-height: 44px;
+    position: relative;
+  }
+  li.child::before {
+    content: "";
+    position: absolute;
+    left: -18px;
+    top: -1px;
+    bottom: 50%;
+    width: 12px;
+    border-left: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    border-bottom-left-radius: 5px;
+  }
+  li.child .label { font-size: 0.92rem; }
+
+  .sub {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--dim);
+    font: 400 1.2rem/1 var(--font-ui);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+  }
+  li:hover .sub { opacity: 1; }
+  .sub:hover { color: var(--pink); background: var(--raised); }
+
+  .subform { display: flex; gap: 8px; margin: 6px 0 10px 30px; }
+  .subform input {
+    flex: 1;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--pink);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--ink);
+    font: 400 0.9rem/1 var(--font-ui);
+  }
+
+  .settings {
+    margin-top: 34px;
+    padding: 20px;
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+  .settings-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .settings h2 { font: 600 1rem/1 var(--font-ui); }
+  .saved { color: var(--keep); font: 700 0.68rem/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .saved[hidden] { display: none; }
+  .field { display: block; padding-top: 16px; }
+  .field > span { display: block; padding-bottom: 6px; color: var(--body); font: 500 0.85rem/1.3 var(--font-ui); }
+  .field small { display: block; padding-top: 5px; color: var(--dim); font: 400 0.72rem/1.45 var(--font-ui); }
+  .field code { font: 400 0.95em/1 var(--font-mono); }
+  .field select, .field input {
+    width: 100%;
+    min-height: 42px;
+    padding: 0 10px;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 0.9rem/1 var(--font-ui);
+  }
+  .save {
+    margin-top: 18px;
+    min-height: 44px;
+    padding: 0 18px;
+    border: 1px solid var(--pink);
+    border-radius: 5px;
+    background: var(--pink);
+    color: #170C12;
+    font: 700 0.82rem/1 var(--font-ui);
+    cursor: pointer;
+  }
+
+  footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 22px;
+    color: var(--dim);
+    font: 400 0.72rem/1.5 var(--font-mono);
+  }
+  footer button {
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  footer button:hover { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="lockup"><em>Riah</em> <span>To-Do</span></div>
+    <div class="date" id="date"></div>
+  </header>
+  <div class="rule"></div>
+
+  <div class="tally" id="tally"><strong>—</strong><span>loading</span></div>
+
+  <ol id="list"></ol>
+  <div class="empty" id="empty" hidden>
+    Nothing chosen yet.
+    <span>Add what today is actually for — up to twelve.</span>
+  </div>
+
+  <form class="add" id="add">
+    <input id="new" type="text" maxlength="120" placeholder="Add a priority" aria-label="Add a priority" autocomplete="off" />
+    <button type="submit" id="addBtn" disabled>Add</button>
+  </form>
+
+  <div class="error" id="error" hidden></div>
+
+  <section class="settings" id="settings">
+    <div class="settings-head">
+      <h2>Settings</h2>
+      <span class="saved" id="saved" hidden>Saved</span>
+    </div>
+
+    <label class="field">
+      <span>File ticked items after</span>
+      <select id="fileAfter">
+        <option value="0">Straight away</option>
+        <option value="15">15 minutes</option>
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="120">2 hours</option>
+        <option value="240">4 hours</option>
+        <option value="480">8 hours</option>
+        <option value="never">Never — I'll clear them myself</option>
+      </select>
+      <small>Filed items leave the list and land in <code>today-filed.json</code>. Nothing is deleted.</small>
+    </label>
+
+    <label class="field">
+      <span>Also write them into a vault</span>
+      <input id="vaultPath" type="text" spellcheck="false" placeholder="C:\Users\you\Obsidian\Second Brain" />
+      <small>An Obsidian vault, or any folder. One dated markdown file per day, appended to. Leave blank for no trail.</small>
+    </label>
+
+    <label class="field">
+      <span>Subfolder inside it</span>
+      <input id="vaultSubfolder" type="text" spellcheck="false" placeholder="done" />
+      <small>Optional, so the daily notes don't land at the vault root.</small>
+    </label>
+
+    <button type="button" class="save" id="save">Save settings</button>
+  </section>
+
+  <footer>
+    <span id="hint">Click the box to tick it off. Click the words to rename. Drag to reorder.</span>
+    <button type="button" id="theme">Light / dark</button>
+  </footer>
+</main>
+
+<script>
+  const listEl = document.getElementById("list");
+  const emptyEl = document.getElementById("empty");
+  const tallyEl = document.getElementById("tally");
+  const dateEl = document.getElementById("date");
+  const errorEl = document.getElementById("error");
+  const newEl = document.getElementById("new");
+  const addBtn = document.getElementById("addBtn");
+  let state = { date: "", items: [] };
+  let dragId = null;
+  // Which task currently has an open "add a step" box, if any.
+  let subtaskFor = null;
+
+  const stored = localStorage.getItem("riah-todo-theme");
+  if (stored) document.documentElement.dataset.theme = stored;
+  document.getElementById("theme").addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("riah-todo-theme", next);
+  });
+
+  function showError(message) {
+    errorEl.textContent = message;
+    errorEl.hidden = !message;
+  }
+
+  async function call(path, body) {
+    const response = await fetch(path, {
+      method: body ? "POST" : "GET",
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.error || "That change did not stick.");
+    if (payload.settings) applySettings(payload.settings);
+    return payload.priorities;
+  }
+
+  async function run(path, body) {
+    try {
+      showError("");
+      render(await call(path, body));
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  function render(next) {
+    state = next;
+    const done = state.items.filter((item) => item.completed).length;
+    const total = state.items.length;
+
+    dateEl.textContent = state.date
+      ? new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" })
+          .format(new Date(state.date + "T12:00:00"))
+      : "";
+
+    tallyEl.classList.toggle("all-clear", total > 0 && done === total);
+    tallyEl.innerHTML = total === 0
+      ? "<strong>0</strong><span>chosen for today</span>"
+      : `<strong>${total - done}</strong><span>left of ${total} — ${done} done</span>`;
+
+    emptyEl.hidden = total > 0;
+
+    const nodes = [];
+    for (const item of state.items) {
+      nodes.push(row(item));
+      // The box for a new step sits right under the task it belongs to.
+      if (subtaskFor === item.id) nodes.push(subtaskForm(item));
+    }
+    listEl.replaceChildren(...nodes);
+    if (subtaskFor) listEl.querySelector(".subform input")?.focus();
+  }
+
+  function subtaskForm(parent) {
+    const wrap = document.createElement("li");
+    wrap.className = "subform";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 120;
+    input.placeholder = `A step for "${parent.label}"`;
+    input.setAttribute("aria-label", `Add a step to ${parent.label}`);
+    const commit = async () => {
+      const value = input.value.trim();
+      if (!value) { subtaskFor = null; render(state); return; }
+      input.value = "";
+      await run("/api/add", { label: value, parentId: parent.id });
+    };
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); commit(); }
+      if (event.key === "Escape") { subtaskFor = null; render(state); }
+    });
+    input.addEventListener("blur", () => { if (!input.value.trim()) { subtaskFor = null; render(state); } });
+    wrap.append(input);
+    return wrap;
+  }
+
+  function row(item) {
+    const li = document.createElement("li");
+    li.className = item.completed ? "done" : "";
+    li.dataset.id = item.id;
+    li.draggable = true;
+
+    const grip = document.createElement("span");
+    grip.className = "grip";
+    grip.textContent = "::";
+    grip.title = "Drag to reorder";
+
+    const tick = document.createElement("button");
+    tick.type = "button";
+    tick.className = "tick";
+    tick.setAttribute("aria-pressed", String(item.completed));
+    tick.setAttribute("aria-label", (item.completed ? "Reopen " : "Complete ") + item.label);
+    tick.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="#0F0F11" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 6.4 12 13 4.5"/></svg>';
+    tick.addEventListener("click", () => run("/api/toggle", { id: item.id }));
+
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = item.label;
+    label.tabIndex = 0;
+    label.title = "Click to rename";
+    label.addEventListener("click", () => startRename(label, item));
+    label.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); startRename(label, item); }
+    });
+
+    const kill = document.createElement("button");
+    kill.type = "button";
+    kill.className = "kill";
+    kill.textContent = "×";
+    kill.setAttribute("aria-label", "Remove " + item.label);
+    kill.addEventListener("click", () => run("/api/remove", { id: item.id }));
+
+    // Only a task gets a "+" — nesting goes one deep, like a comment reply.
+    if (item.parentId) {
+      li.classList.add("child");
+      li.append(grip, tick, label, kill);
+    } else {
+      const sub = document.createElement("button");
+      sub.type = "button";
+      sub.className = "sub";
+      sub.textContent = "+";
+      sub.title = "Add a step under this";
+      sub.setAttribute("aria-label", "Add a step under " + item.label);
+      sub.addEventListener("click", () => {
+        subtaskFor = subtaskFor === item.id ? null : item.id;
+        render(state);
+      });
+      li.append(grip, tick, label, sub, kill);
+    }
+    wireDrag(li);
+    return li;
+  }
+
+  function startRename(label, item) {
+    if (label.isContentEditable) return;
+    label.contentEditable = "plaintext-only";
+    label.focus();
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+
+    const finish = async (commit) => {
+      label.contentEditable = "false";
+      const value = label.textContent.trim();
+      if (!commit || !value || value === item.label) {
+        label.textContent = item.label;
+        return;
+      }
+      await run("/api/rename", { id: item.id, label: value });
+    };
+    label.addEventListener("blur", () => finish(true), { once: true });
+    label.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); label.blur(); }
+      if (event.key === "Escape") { event.preventDefault(); label.textContent = item.label; label.blur(); }
+    });
+  }
+
+  function wireDrag(li) {
+    li.addEventListener("dragstart", () => { dragId = li.dataset.id; li.classList.add("dragging"); });
+    li.addEventListener("dragend", () => { dragId = null; li.classList.remove("dragging"); [...listEl.children].forEach((n) => n.classList.remove("over")); });
+    li.addEventListener("dragover", (event) => { event.preventDefault(); li.classList.add("over"); });
+    li.addEventListener("dragleave", () => li.classList.remove("over"));
+    li.addEventListener("drop", (event) => {
+      event.preventDefault();
+      li.classList.remove("over");
+      const targetId = li.dataset.id;
+      if (!dragId || dragId === targetId) return;
+      const dragged = state.items.find((item) => item.id === dragId);
+      const target = state.items.find((item) => item.id === targetId);
+      if (!dragged || !target) return;
+
+      // Drop a task onto a subtask's row and you mean its parent's thread.
+      if (dragged.parentId) {
+        const into = target.parentId ?? target.id;
+        run("/api/set-parent", { id: dragId, parentId: into === dragged.parentId ? dragged.parentId : into });
+        return;
+      }
+      // A task moves as a whole thread, so it can only land above another task.
+      const before = target.parentId ?? target.id;
+      run("/api/move", { id: dragId, beforeId: before });
+    });
+  }
+
+  // --- settings ---
+  const fileAfterEl = document.getElementById("fileAfter");
+  const vaultPathEl = document.getElementById("vaultPath");
+  const vaultSubEl = document.getElementById("vaultSubfolder");
+  const savedEl = document.getElementById("saved");
+  let settingsTouched = false;
+
+  function applySettings(settings) {
+    // Never yank a field out from under someone mid-edit.
+    if (settingsTouched) return;
+    fileAfterEl.value = settings.fileAfterMinutes === null ? "never" : String(settings.fileAfterMinutes);
+    if (!fileAfterEl.value) fileAfterEl.value = "120";
+    vaultPathEl.value = settings.vaultPath || "";
+    vaultSubEl.value = settings.vaultSubfolder || "";
+  }
+
+  for (const el of [fileAfterEl, vaultPathEl, vaultSubEl]) {
+    el.addEventListener("input", () => { settingsTouched = true; savedEl.hidden = true; });
+  }
+
+  document.getElementById("save").addEventListener("click", async () => {
+    try {
+      showError("");
+      const value = fileAfterEl.value;
+      render(await call("/api/settings", {
+        fileAfterMinutes: value === "never" ? "never" : Number(value),
+        vaultPath: vaultPathEl.value.trim(),
+        vaultSubfolder: vaultSubEl.value.trim(),
+      }));
+      settingsTouched = false;
+      savedEl.hidden = false;
+      setTimeout(() => { savedEl.hidden = true; }, 2500);
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+
+  newEl.addEventListener("input", () => { addBtn.disabled = !newEl.value.trim(); });
+  document.getElementById("add").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const value = newEl.value.trim();
+    if (!value) return;
+    newEl.value = "";
+    addBtn.disabled = true;
+    await run("/api/add", { label: value });
+    newEl.focus();
+  });
+
+  // The tray note writes the same file, so the page follows along instead of
+  // going stale behind Captain's back.
+  async function poll() {
+    try {
+      const next = await call("/api/list");
+      if (JSON.stringify(next) !== JSON.stringify(state)) render(next);
+    } catch { /* the desk went away; keep showing what we have */ }
+  }
+
+  run("/api/list");
+  setInterval(poll, 2000);
+</script>
+</body>
+</html>

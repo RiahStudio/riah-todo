@@ -1,0 +1,19 @@
+{
+  "name": "riah-todo",
+  "version": "1.0.0",
+  "description": "Today's list as a note by the Windows clock. Click the tray icon, tick things off, click away. One JSON file, no server required.",
+  "license": "MIT",
+  "keywords": ["todo", "tray", "windows", "productivity", "mcp"],
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "smoke:note": "node test/note-smoke.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  }
+}
