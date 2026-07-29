@@ -161,16 +161,36 @@ function Enter-StoreLock([int]$timeoutMs = 5000) {
   while ($true) {
     try {
       $script:LockHandle = [System.IO.File]::Open($lock, 'CreateNew', 'Write', 'None')
+      # Stamp the owner, in the same shape lib/store.mjs writes and reads. Age
+      # alone is not evidence of abandonment -- a busy holder can outlive any
+      # window you pick, and stealing its lock puts two writers on one file.
+      try {
+        $stamp = '{"pid":' + $PID + ',"at":' + [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()) + '}'
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($stamp)
+        $script:LockHandle.Write($bytes, 0, $bytes.Length)
+        $script:LockHandle.Flush()
+      } catch {}
       return $true
     } catch {
-      # A lock left by something that died must not block the note for ever.
+      # Only reclaim a lock whose owner is genuinely gone.
       try {
-        $age = ((Get-Date).ToUniversalTime() - (Get-Item -LiteralPath $lock -Force).LastWriteTimeUtc).TotalMilliseconds
-        if ($age -gt $script:LockStaleMs) {
+        $held = [System.IO.File]::ReadAllText($lock) | ConvertFrom-Json
+        $alive = $false
+        if ($held.pid) { $alive = [bool](Get-Process -Id ([int]$held.pid) -ErrorAction SilentlyContinue) }
+        if (-not $alive) {
           Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
           continue
         }
-      } catch {}
+      } catch {
+        # Unstamped or mid-write: fall back to age, generously.
+        try {
+          $age = ((Get-Date).ToUniversalTime() - (Get-Item -LiteralPath $lock -Force).LastWriteTimeUtc).TotalMilliseconds
+          if ($age -gt $script:LockStaleMs) {
+            Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
+            continue
+          }
+        } catch {}
+      }
       if (((Get-Date) - $started).TotalMilliseconds -gt $timeoutMs) {
         # Writing unlocked here would cancel the guarantee at the exact moment it
         # matters. Refuse instead: nothing written, nothing lost, and the caller
