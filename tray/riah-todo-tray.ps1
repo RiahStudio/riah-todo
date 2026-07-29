@@ -940,7 +940,8 @@ $MIN_W = 260
 $MAX_W = 900
 $PAD = 16
 $HEAD_H = 34
-$TALLY_H = 38
+# 38 let the big count's descender touch the TODAY heading underneath it.
+$TALLY_H = 46
 $ROW_MIN_H = 40
 $ROW_GAP_Y = 4
 $CHECK = 20
@@ -1657,7 +1658,10 @@ function Draw-Check($g, [int]$x, [int]$y, [bool]$done, [bool]$hot) {
   }
 }
 
-$popup.add_Paint({
+# Held in a variable rather than written inline so a poster shot can run the very
+# same drawing against a scaled Graphics. A marketing image of a redrawn
+# lookalike would be a lie; this is the note itself, rendered larger.
+$script:PaintNote = {
   param($s, $e)
   $g = $e.Graphics
   $g.Clear($C.Bg)
@@ -1926,7 +1930,36 @@ $popup.add_Paint({
   $gripCol.Dispose()
 
   $bText.Dispose(); $bDim.Dispose(); $bFaint.Dispose(); $bBrand.Dispose(); $pen.Dispose()
-})
+}
+$popup.add_Paint($script:PaintNote)
+
+function Get-NotePoster([int]$scale) {
+  # The note drawn at a multiple of its size: same code, scaled Graphics, so the
+  # text is rasterised at the larger size instead of being blown up afterwards.
+  $w = $popup.ClientSize.Width
+  $h = $popup.ClientSize.Height
+  $bmp = New-Object System.Drawing.Bitmap(($w * $scale), ($h * $scale))
+  # Do NOT also raise the bitmap's DPI. Point-sized fonts are converted using
+  # it, so with the transform as well every string came out at scale-squared,
+  # wrapped early, and the list ran off the bottom of its own window.
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.ScaleTransform($scale, $scale)
+  # ClearType assumes it is drawing on a real window; on a bitmap it fringes the
+  # letters with colour. Greyscale antialiasing is what a screenshot should look
+  # like at this size.
+  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+  $ev = New-Object System.Windows.Forms.PaintEventArgs($g, (New-Object System.Drawing.Rectangle(0, 0, $w, $h)))
+  & $script:PaintNote $popup $ev
+  # The add box is a real TextBox sitting on top of the form, so the paint code
+  # draws its frame but never its words. Put them back.
+  if ($script:AddRect) {
+    $bHint = New-Object System.Drawing.SolidBrush($C.Faint)
+    [void]$g.DrawString((Get-AddHint), $F.Row, $bHint, ($PAD + 8), ($script:AddRect.Y + 9))
+    $bHint.Dispose()
+  }
+  $g.Dispose()
+  return $bmp
+}
 
 function Get-RowAt([System.Drawing.Point]$client) {
   # A row scrolled under the header or below the add box is not there to click,
@@ -2525,7 +2558,10 @@ if ($script:ShotPath) {
         }
         $script:UserHSet = $true
         $script:UserMinH = 320
-        Refresh-Note
+        # Place-Popup, not Refresh-Note: Refresh-Note deliberately leaves a
+        # hidden note alone, and anything at all taking focus during the
+        # exercise would make this measure whatever height it happened to have.
+        [void](Place-Popup)
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 200
         $gs = $null
@@ -2548,6 +2584,41 @@ if ($script:ShotPath) {
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 250
       }
+      # Poster mode: the note at a multiple of its size, for the README and the
+      # page. Never saves geometry -- the real note shares this settings file and
+      # must not come back a different shape because a picture was taken.
+      if ($env:RIAH_TODO_TRAY_POSTER) {
+        $pw = 0; $ph = 0; $pscale = 2
+        if ($env:RIAH_TODO_TRAY_POSTER_W) { $pw = [int]$env:RIAH_TODO_TRAY_POSTER_W }
+        if ($env:RIAH_TODO_TRAY_POSTER_H) { $ph = [int]$env:RIAH_TODO_TRAY_POSTER_H }
+        if ($env:RIAH_TODO_TRAY_POSTER_SCALE) { $pscale = [int]$env:RIAH_TODO_TRAY_POSTER_SCALE }
+        if ($pw -gt 0) { $script:WinW = $pw }
+        if ($ph -gt 0) {
+          $script:UserHSet = $true; $script:UserMinH = $ph
+        } else {
+          # No height asked for means "as tall as the list needs". Without this
+          # the poster would inherit whatever height the real note was left at
+          # and cut the list off halfway down.
+          $script:UserHSet = $false; $script:UserMinH = 0
+        }
+        # Width changes how the text wraps, which changes the height, which
+        # changes nothing else -- so it settles in two passes. One pass measured
+        # at the old width and cut the last rows off.
+        for ($pass = 0; $pass -lt 3; $pass++) {
+          [void](Place-Popup)
+          $popup.Refresh()
+          [System.Windows.Forms.Application]::DoEvents()
+        }
+        Start-Sleep -Milliseconds 250
+        $poster = Get-NotePoster $pscale
+        $poster.Save($env:RIAH_TODO_TRAY_POSTER, [System.Drawing.Imaging.ImageFormat]::Png)
+        Write-Host ('TRAY_POSTER_OK ' + $poster.Width + 'x' + $poster.Height +
+          ' rows=' + @($script:Rows).Count + ' win=' + $popup.ClientSize.Height +
+          ' content=' + $script:ContentBottom + ' view=' + $script:ViewBottom +
+          ' scroll=' + (Get-MaxScroll) + ' at=' + $env:RIAH_TODO_TRAY_POSTER)
+        $poster.Dispose()
+      }
+
       $bmp = New-Object System.Drawing.Bitmap($popup.Width, $popup.Height)
       # PrintWindow with PW_RENDERFULLCONTENT captures child controls too, so the
       # shot shows the real note -- text box and all -- not just what Paint drew.

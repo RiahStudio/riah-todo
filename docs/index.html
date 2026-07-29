@@ -13,7 +13,12 @@
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Riah To-Do" />
 <meta property="og:description" content="The to-do list you&rsquo;ll actually open. It sits by your clock. One click and your day is in front of you." />
-<meta name="twitter:card" content="summary" />
+<meta property="og:image" content="https://riahstudio.github.io/riah-todo/screenshots/social-card.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="https://riahstudio.github.io/riah-todo/" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://riahstudio.github.io/riah-todo/screenshots/social-card.png" />
 
 <style>
   :root {
@@ -195,64 +200,20 @@
   footer a:hover, footer a:focus-visible { color: var(--ink); }
 
   /* --- the note, drawn --- */
+  /* The note itself, rendered by its own drawing code at 2x. Not a mockup. */
   .shot {
     margin: 46px 0 0;
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
   }
-  .note {
+  .shot img {
     width: 100%;
-    max-width: 306px;
-    background: var(--surface);
+    max-width: 400px;
+    height: auto;
     border: 1px solid var(--rule-strong);
     border-radius: 8px;
-    padding: 15px 16px 14px;
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
-    font-size: 14px;
-    user-select: none;
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
   }
-  .note-top {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    padding-bottom: 11px;
-    border-bottom: 1px solid var(--rule);
-  }
-  .note-top .lockup { font-size: 18px; }
-  .note-top .lockup span { font-size: 13px; }
-  .tally { color: var(--dim); font: 400 12px/1 var(--font-mono); }
-  .band {
-    color: var(--dim);
-    font: 400 10px/1 var(--font-mono);
-    letter-spacing: 0.14em;
-    padding: 15px 0 8px;
-  }
-  .row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
-  .box {
-    flex: none;
-    width: 14px;
-    height: 14px;
-    margin-top: 3px;
-    border: 1px solid var(--rule-strong);
-    border-radius: 3px;
-  }
-  .row.done .box { background: var(--keep); border-color: var(--keep); position: relative; }
-  .row.done .box::after {
-    content: "";
-    position: absolute;
-    left: 4px;
-    top: 1px;
-    width: 4px;
-    height: 8px;
-    border: solid var(--surface);
-    border-width: 0 2px 2px 0;
-    transform: rotate(43deg);
-  }
-  .row.done .label { color: var(--dim); text-decoration: line-through; }
-  .label { color: var(--ink); line-height: 1.35; }
-  .row.step { padding-left: 22px; }
-  .row.step2 { padding-left: 44px; }
-  .row.step .label, .row.step2 .label { color: var(--body); font-size: 13px; }
 
   @media (max-width: 620px) {
     .shot { justify-content: center; }
@@ -286,23 +247,9 @@
     </div>
   </div>
 
-  <div class="shot" role="img" aria-label="The note open beside the Windows clock, showing today&rsquo;s tasks with steps indented underneath, and a task parked under Later.">
-    <div class="note" aria-hidden="true">
-      <div class="note-top">
-        <div class="lockup"><em>Riah</em> <span>To-Do</span></div>
-        <div class="tally">3 left of 4</div>
-      </div>
-      <div class="band">TODAY</div>
-      <div class="row"><span class="box"></span><span class="label">Ship the Gumroad listing</span></div>
-      <div class="row done step"><span class="box"></span><span class="label">Write the description</span></div>
-      <div class="row step"><span class="box"></span><span class="label">Shoot the cover</span></div>
-      <div class="row step2"><span class="box"></span><span class="label">Borrow the good lamp</span></div>
-      <div class="row"><span class="box"></span><span class="label">Call the accountant back</span></div>
-      <div class="band">TOMORROW</div>
-      <div class="row"><span class="box"></span><span class="label">Selah launch checklist</span></div>
-      <div class="band">LATER</div>
-      <div class="row"><span class="box"></span><span class="label">Riah Money</span></div>
-    </div>
+  <div class="shot">
+    <img src="assets/note-2x.png" width="520" height="594"
+         alt="The note: four tasks left of six for today, with steps indented under Ship the Gumroad listing, two ticked off and struck through, a Tomorrow group holding the Selah launch checklist, and a Later group holding Riah Money." />
   </div>
 
   <section>
