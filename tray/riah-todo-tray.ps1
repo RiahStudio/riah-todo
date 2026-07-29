@@ -120,6 +120,8 @@ if ($script:HasNative) { try { $script:DpiAware = [RiahTodo.Native]::SetProcessD
 # --- the list on disk (same file Riah Code and the board use) ---
 $script:MaxItems = 12
 $script:MaxSubtasks = 12
+# 0 is a top-level task, so six levels. Matches MAX_DEPTH in lib/store.mjs.
+$script:MaxDepth = 5
 $script:MaxLabel = 120
 $script:Port = 8779
 if ($env:RIAH_TODO_PORT) { try { $script:Port = [int]$env:RIAH_TODO_PORT } catch {} }
@@ -299,8 +301,10 @@ function Read-Store {
 }
 
 function Invoke-Thread($items) {
-  # Mirror of lib/store.mjs: a subtask always sits directly under its task, an
-  # orphan is promoted rather than dropped, and the twelve cap counts TASKS.
+  # Mirror of lib/store.mjs: a depth-first walk, so each item sits directly under
+  # its parent with its whole thread beneath it and carries a derived depth.
+  # Orphans and loops are promoted rather than dropped; the twelve cap counts
+  # TASKS, not rows.
   #
   # It builds fresh rows rather than editing what it was handed, so it works on
   # anything list-shaped -- including the PSCustomObjects ConvertFrom-Json hands
@@ -316,6 +320,7 @@ function Invoke-Thread($items) {
       completed = [bool]$i.completed
       completedAt = $i.completedAt
       parentId = $parent
+      depth = 0
     })
   }
   $byId = @{}
@@ -323,9 +328,20 @@ function Invoke-Thread($items) {
   $roots = New-Object System.Collections.ArrayList
   $kids = @{}
   foreach ($i in $rows) {
+    # Following parentId upward must terminate; a loop is cut at the top.
+    $loop = $false
+    $seen = @{}
+    $seen[[string]$i.id] = $true
+    $cursor = $null
+    if ($i.parentId) { $cursor = $byId[[string]$i.parentId] }
+    while ($null -ne $cursor) {
+      if ($seen.ContainsKey([string]$cursor.id)) { $loop = $true; break }
+      $seen[[string]$cursor.id] = $true
+      if ($cursor.parentId) { $cursor = $byId[[string]$cursor.parentId] } else { $cursor = $null }
+    }
     $p = $null
     if ($i.parentId) { $p = $byId[[string]$i.parentId] }
-    if ($null -eq $p -or $p.id -eq $i.id -or $p.parentId) {
+    if ($null -eq $p -or $p.id -eq $i.id -or $loop) {
       $i.parentId = $null
       [void]$roots.Add($i)
       continue
@@ -334,24 +350,69 @@ function Invoke-Thread($items) {
     if (-not $kids.ContainsKey($key)) { $kids[$key] = New-Object System.Collections.ArrayList }
     [void]$kids[$key].Add($i)
   }
+
   $out = New-Object System.Collections.ArrayList
+  # An explicit stack rather than recursion: PowerShell functions cannot see
+  # their own name reliably inside a scriptblock, and this keeps it obvious.
   $n = 0
   foreach ($r in $roots) {
     if ($n -ge $script:MaxItems) { break }
     $n++
-    [void]$out.Add($r)
-    $key = [string]$r.id
-    if ($kids.ContainsKey($key)) {
-      $m = 0
-      foreach ($kid in $kids[$key]) {
-        if ($m -ge $script:MaxSubtasks) { break }
-        $m++
-        [void]$out.Add($kid)
+    $stack = New-Object System.Collections.Stack
+    $stack.Push(@{ item = $r; depth = 0 })
+    while ($stack.Count -gt 0) {
+      $frame = $stack.Pop()
+      $node = $frame.item
+      $node.depth = $frame.depth
+      [void]$out.Add($node)
+      $key = [string]$node.id
+      if (-not $kids.ContainsKey($key)) { continue }
+      $childDepth = $frame.depth + 1
+      $flatten = ($frame.depth -ge $script:MaxDepth)
+      if ($flatten) { $childDepth = $frame.depth }
+      # Pushed in reverse so they come off the stack in their written order.
+      $list = @($kids[$key])
+      if (-not $flatten -and $list.Count -gt $script:MaxSubtasks) {
+        $list = $list[0..($script:MaxSubtasks - 1)]
+      }
+      for ($k = $list.Count - 1; $k -ge 0; $k--) {
+        if ($flatten) { $list[$k].parentId = $node.parentId }
+        $stack.Push(@{ item = $list[$k]; depth = $childDepth })
       }
     }
   }
   # NOT ", @(...)": every caller wraps this in @(), and the unary comma would
   # hand them a single element that happens to be the whole list.
+  return $out.ToArray()
+}
+
+function Get-Descendants([string]$id) {
+  # Everything beneath an item, however deep.
+  $out = New-Object System.Collections.ArrayList
+  $stack = New-Object System.Collections.Stack
+  $stack.Push($id)
+  while ($stack.Count -gt 0) {
+    $current = $stack.Pop()
+    foreach ($i in @($script:List.items)) {
+      if ($i.parentId -eq $current) {
+        [void]$out.Add($i)
+        $stack.Push($i.id)
+      }
+    }
+  }
+  return $out.ToArray()
+}
+
+function Get-Ancestors($item) {
+  $out = New-Object System.Collections.ArrayList
+  $byId = @{}
+  foreach ($i in @($script:List.items)) { $byId[[string]$i.id] = $i }
+  $cursor = $null
+  if ($item.parentId) { $cursor = $byId[[string]$item.parentId] }
+  while ($null -ne $cursor -and -not ($out -contains $cursor)) {
+    [void]$out.Add($cursor)
+    if ($cursor.parentId) { $cursor = $byId[[string]$cursor.parentId] } else { $cursor = $null }
+  }
   return $out.ToArray()
 }
 
@@ -526,8 +587,13 @@ function Invoke-Sweep($list) {
   $filed = @{}
   $cut = (Get-Date).ToUniversalTime().AddMinutes(-1 * $script:FileAfterMinutes)
   foreach ($i in @($list.items)) {
-    # A subtask goes when its task goes, whatever its own stamp says.
-    if ($i.parentId -and $filed.ContainsKey([string]$i.parentId)) { [void]$gone.Add($i); continue }
+    # Anything under something already filed goes with it, at any depth. The
+    # list is in depth-first order, so a parent is always decided first.
+    if ($i.parentId -and $filed.ContainsKey([string]$i.parentId)) {
+      [void]$gone.Add($i)
+      $filed[[string]$i.id] = $true
+      continue
+    }
     if (-not $i.completed) { [void]$keep.Add($i); continue }
     $when = $null
     if ($i.completedAt) { try { $when = ([datetime]$i.completedAt).ToUniversalTime() } catch {} }
@@ -595,6 +661,16 @@ function Add-PriorityUnlocked([string]$label, [string]$parentId = $null) {
   if ($value.Length -gt $script:MaxLabel) { $value = $value.Substring(0, $script:MaxLabel) }
   [void](Sync-List $true)
   if ($parentId) {
+    $parent = $null
+    foreach ($i in @($script:List.items)) { if ($i.id -eq $parentId) { $parent = $i; break } }
+    if ($null -eq $parent) { return }
+    $parentDepth = 0
+    if ($null -ne $parent.depth) { $parentDepth = [int]$parent.depth }
+    if ($parentDepth -ge $script:MaxDepth) {
+      Set-Flash ('That thread is as deep as it goes (' + ($script:MaxDepth + 1) + ' levels).')
+      Refresh-Note
+      return
+    }
     if (@(Get-Children $parentId).Count -ge $script:MaxSubtasks) {
       Set-Flash ('That task is full at ' + $script:MaxSubtasks + ' subtasks.')
       Refresh-Note
@@ -608,7 +684,7 @@ function Add-PriorityUnlocked([string]$label, [string]$parentId = $null) {
   if (Test-Duplicate $value $null) { Set-Flash 'Already on the list.'; Refresh-Note; return }
   $items = New-Object System.Collections.ArrayList
   foreach ($i in @($script:List.items)) { [void]$items.Add($i) }
-  [void]$items.Add(@{ id = New-Id; label = $value; completed = $false; completedAt = $null; parentId = $parentId })
+  [void]$items.Add(@{ id = New-Id; label = $value; completed = $false; completedAt = $null; parentId = $parentId; depth = 0 })
   $script:List.items = @(Invoke-Thread @($items.ToArray()))
   [void](Write-Store $script:List)
   Refresh-Note
@@ -637,25 +713,23 @@ function Toggle-PriorityUnlocked([string]$id) {
   if ($done) { $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ') }
   $item.completed = $done
   $item.completedAt = $stamp
-  if (-not $item.parentId) {
-    foreach ($kid in @(Get-Children $item.id)) {
-      $kid.completed = $done
-      $kid.completedAt = $stamp
-    }
-  } else {
-    $parent = $null
-    foreach ($p in @($script:List.items)) { if ($p.id -eq $item.parentId) { $parent = $p; break } }
-    if ($null -ne $parent) {
-      $allDone = $true
-      foreach ($kid in @(Get-Children $parent.id)) { if (-not $kid.completed) { $allDone = $false; break } }
-      $parent.completed = $allDone
-      if ($allDone) {
-        if (-not $parent.completedAt) {
-          $parent.completedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
-        }
-      } else {
-        $parent.completedAt = $null
+  # Down: the whole thread beneath it, however deep.
+  foreach ($kid in @(Get-Descendants $item.id)) {
+    $kid.completed = $done
+    $kid.completedAt = $stamp
+  }
+  # Up: each ancestor is done only while every one of ITS children is, and
+  # reopening anything reopens the line above it all the way to the top.
+  foreach ($parent in @(Get-Ancestors $item)) {
+    $allDone = $true
+    foreach ($kid in @(Get-Children $parent.id)) { if (-not $kid.completed) { $allDone = $false; break } }
+    $parent.completed = $allDone
+    if ($allDone) {
+      if (-not $parent.completedAt) {
+        $parent.completedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
       }
+    } else {
+      $parent.completedAt = $null
     }
   }
   [void](Write-Store $script:List)
@@ -670,7 +744,8 @@ function Move-BeforeUnlocked([string]$id, [string]$beforeId) {
   if ($null -eq $item -or $id -eq $beforeId) { return }
   $moving = New-Object System.Collections.ArrayList
   [void]$moving.Add($item)
-  foreach ($kid in @(Get-Children $item.id)) { [void]$moving.Add($kid) }
+  # The whole thread travels, however deep.
+  foreach ($kid in @(Get-Descendants $item.id)) { [void]$moving.Add($kid) }
   $movingIds = @{}
   foreach ($m in $moving) { $movingIds[[string]$m.id] = $true }
   # A task cannot be dropped inside its own thread.
@@ -693,10 +768,28 @@ function Set-ParentUnlocked([string]$id, [string]$parentId) {
   if ($null -eq $item) { return }
   if ($parentId) {
     if ($parentId -eq $id) { return }
-    if (@(Get-Children $id).Count -gt 0) { Set-Flash 'Move its subtasks out first.'; Refresh-Note; return }
+    # Dropping something into its own thread would orphan the lot.
+    foreach ($kid in @(Get-Descendants $id)) {
+      if ($kid.id -eq $parentId) { Set-Flash 'A task cannot go inside its own thread.'; Refresh-Note; return }
+    }
     $parent = $null
     foreach ($p in @($script:List.items)) { if ($p.id -eq $parentId) { $parent = $p; break } }
-    if ($null -eq $parent -or $parent.parentId) { return }
+    if ($null -eq $parent) { return }
+    $parentDepth = 0
+    if ($null -ne $parent.depth) { $parentDepth = [int]$parent.depth }
+    $ownDepth = 0
+    $mine = 0
+    if ($null -ne $item.depth) { $mine = [int]$item.depth }
+    foreach ($kid in @(Get-Descendants $id)) {
+      $kd = 0
+      if ($null -ne $kid.depth) { $kd = [int]$kid.depth }
+      if (($kd - $mine) -gt $ownDepth) { $ownDepth = $kd - $mine }
+    }
+    if (($parentDepth + 1 + $ownDepth) -gt $script:MaxDepth) {
+      Set-Flash ('That would nest deeper than ' + ($script:MaxDepth + 1) + ' levels.')
+      Refresh-Note
+      return
+    }
     if (@(Get-Children $parentId).Count -ge $script:MaxSubtasks) {
       Set-Flash ('That task is full at ' + $script:MaxSubtasks + ' subtasks.')
       Refresh-Note
@@ -718,10 +811,13 @@ function Remove-PriorityUnlocked([string]$id) {
   # Removing the last item is a real, deliberate empty list.
   $script:AllowEmptyWrite = $true
   $keep = New-Object System.Collections.ArrayList
-  # A task takes its subtasks with it -- leaving them behind would silently
-  # promote work Captain thought he had just deleted.
+  # A task takes its WHOLE thread with it, however deep -- leaving descendants
+  # behind would silently promote work Captain thought he had just deleted.
+  $doomed = @{}
+  $doomed[[string]$id] = $true
+  foreach ($kid in @(Get-Descendants $id)) { $doomed[[string]$kid.id] = $true }
   foreach ($i in @($script:List.items)) {
-    if ($i.id -ne $id -and $i.parentId -ne $id) { [void]$keep.Add($i) }
+    if (-not $doomed.ContainsKey([string]$i.id)) { [void]$keep.Add($i) }
   }
   $script:List.items = @($keep.ToArray())
   [void](Write-Store $script:List)
@@ -852,16 +948,28 @@ $script:DropBeforeId = $null
 $script:DropAtEnd = $false
 $script:HoverPlus = $false
 
-function Get-TextWidth([bool]$child = $false) {
-  $w = $script:WinW - (2 * $PAD) - $CHECK - $CHECK_GAP - $KILL_W
-  if ($child) { return ($w - $THREAD_INDENT) }
-  # A task also carries the "+" that starts a subtask.
-  return ($w - $PLUS_W)
+function Get-Indent([int]$depth) {
+  # The first step in is full width; deeper ones narrow, so a six-level thread
+  # still leaves the words room on a small note. Captain can widen it anyway.
+  if ($depth -le 0) { return 0 }
+  $indent = $THREAD_INDENT
+  for ($d = 2; $d -le $depth; $d++) {
+    $step = $THREAD_INDENT - (($d - 1) * 4)
+    if ($step -lt 10) { $step = 10 }
+    $indent += $step
+  }
+  return $indent
+}
+
+function Get-TextWidth([int]$depth = 0) {
+  $w = $script:WinW - (2 * $PAD) - $CHECK - $CHECK_GAP - $KILL_W - $PLUS_W
+  return ($w - (Get-Indent $depth))
 }
 
 function Get-RowLeft($row) {
-  if ($row.item.parentId) { return ($PAD + $THREAD_INDENT) }
-  return $PAD
+  $depth = 0
+  if ($null -ne $row.depth) { $depth = [int]$row.depth }
+  return ($PAD + (Get-Indent $depth))
 }
 
 function Get-HeadHeight($g) {
@@ -884,16 +992,18 @@ function Measure-Rows($g) {
   $rows = New-Object System.Collections.ArrayList
   $y = $PAD + (Get-HeadHeight $g) + $TALLY_H
   foreach ($i in @($script:List.items)) {
-    $isChild = [bool]$i.parentId
-    $w = Get-TextWidth $isChild
+    $depth = 0
+    if ($null -ne $i.depth) { $depth = [int]$i.depth }
+    $w = Get-TextWidth $depth
+    if ($w -lt 60) { $w = 60 }
     $font = if ($i.completed) { $F.RowDone } else { $F.Row }
-    $h = if ($isChild) { $ROW_MIN_H - 6 } else { $ROW_MIN_H }
+    $h = if ($depth -gt 0) { $ROW_MIN_H - 6 } else { $ROW_MIN_H }
     try {
       $size = $g.MeasureString([string]$i.label, $font, $w)
       $needed = [int][Math]::Ceiling($size.Height) + 12
       if ($needed -gt $h) { $h = $needed }
     } catch {}
-    [void]$rows.Add(@{ id = $i.id; item = $i; y = $y; h = $h; child = $isChild })
+    [void]$rows.Add(@{ id = $i.id; item = $i; y = $y; h = $h; depth = $depth; child = ($depth -gt 0) })
     $y += $h + $ROW_GAP_Y
   }
   $script:Rows = @($rows.ToArray())
@@ -1457,7 +1567,8 @@ $popup.add_Paint({
     $editing = ($script:EditId -eq $r.id)
     $dragging = ($script:RowDragId -eq $r.id)
     $left = Get-RowLeft $r
-    $textW = Get-TextWidth ([bool]$r.child)
+    $textW = Get-TextWidth ([int]$r.depth)
+    if ($textW -lt 60) { $textW = 60 }
 
     if (($hover -or $editing) -and -not $dragging) {
       $rowBg = New-Object System.Drawing.SolidBrush($C.Row)
@@ -1470,11 +1581,12 @@ $popup.add_Paint({
       $edge.Dispose()
     }
     # The thread line: a subtask is visibly hanging off the task above it.
-    if ($r.child) {
+    if ($r.depth -gt 0) {
       $thread = New-Object System.Drawing.Pen($C.Border)
       $mid = $r.y + [int]($r.h / 2)
-      [void]$g.DrawLine($thread, ($PAD + 9), $r.y, ($PAD + 9), $mid)
-      [void]$g.DrawLine($thread, ($PAD + 9), $mid, ($left - 5), $mid)
+      $stem = $PAD + (Get-Indent ([int]$r.depth - 1)) + 9
+      [void]$g.DrawLine($thread, $stem, $r.y, $stem, $mid)
+      [void]$g.DrawLine($thread, $stem, $mid, ($left - 5), $mid)
       $thread.Dispose()
     }
 
@@ -1491,7 +1603,7 @@ $popup.add_Paint({
     if ($hover -and -not $editing -and -not $dragging) {
       # "+" starts a subtask under this task. Subtasks do not get one -- nesting
       # only goes one deep.
-      if (-not $r.child) {
+      if ([int]$r.depth -lt $script:MaxDepth) {
         $plusCol = if ($script:HoverPlus) { $C.Brand } else { $C.Faint }
         $bPlus = New-Object System.Drawing.SolidBrush($plusCol)
         [void]$g.DrawString('+', $F.Kill, $bPlus,
@@ -1578,7 +1690,8 @@ function Test-InKill([System.Drawing.Point]$pt) {
 }
 
 function Test-InPlus([System.Drawing.Point]$pt, $row) {
-  if ($null -eq $row -or $row.child) { return $false }
+  # Any row can start a sub-thread, right down to the depth limit.
+  if ($null -eq $row -or [int]$row.depth -ge $script:MaxDepth) { return $false }
   $x0 = $script:WinW - $PAD - 24 - $PLUS_W
   return ($pt.X -ge $x0 -and $pt.X -lt ($x0 + $PLUS_W))
 }
@@ -1592,10 +1705,10 @@ function Get-DropTarget([System.Drawing.Point]$pt) {
   $movingIds = @{}
   if ($script:RowDragId) {
     $movingIds[[string]$script:RowDragId] = $true
-    foreach ($kid in @(Get-Children $script:RowDragId)) { $movingIds[[string]$kid.id] = $true }
+    foreach ($kid in @(Get-Descendants $script:RowDragId)) { $movingIds[[string]$kid.id] = $true }
   }
   foreach ($r in $script:Rows) {
-    if ($r.child) { continue }
+    if ($r.depth -gt 0) { continue }
     if ($movingIds.ContainsKey([string]$r.id)) { continue }
     if ($pt.Y -lt ($r.y + [int]($r.h / 2))) { $script:DropBeforeId = $r.id; return }
   }
@@ -1976,9 +2089,19 @@ if ($script:ShotPath) {
         if ($host2) {
           Add-Priority 'Step one' $host2.id
           Add-Priority 'Step two' $host2.id
-          # Ticking the task must tick the whole thread.
+          # And a sub-thread under a sub-point, which is the whole point of
+          # nesting past one level.
+          $stepOne = $null
+          foreach ($i in @($script:List.items)) { if ($i.label -eq 'Step one') { $stepOne = $i; break } }
+          if ($stepOne) {
+            Add-Priority 'Deeper still' $stepOne.id
+            $deeper = $null
+            foreach ($i in @($script:List.items)) { if ($i.label -eq 'Deeper still') { $deeper = $i; break } }
+            if ($deeper) { Add-Priority 'Deepest of all' $deeper.id }
+          }
+          # Ticking the task must tick the whole thread, at every level.
           Toggle-Priority $host2.id
-          # Drag it to the very top, subtasks and all.
+          # Drag it to the very top, thread and all.
           $top = @(Get-TopLevel)[0]
           if ($top -and $top.id -ne $host2.id) { Move-Before $host2.id $top.id }
         }

@@ -74,7 +74,7 @@ const labels = list.items.map((item) => item.label);
 if (!labels.includes("Added by the note")) {
   fail(`the note's add never reached the file: ${JSON.stringify(labels)}`);
 }
-if (labels.length !== 6) fail(`expected 6 items after the exercise, got ${JSON.stringify(labels)}`);
+if (labels.length !== 8) fail(`expected 8 items after the exercise, got ${JSON.stringify(labels)}`);
 
 const ticked = list.items.find((item) => item.label === "Gumroad Shovels");
 if (!ticked?.completed) fail("the note's tick never reached the file.");
@@ -90,11 +90,30 @@ const steps = list.items.filter((item) => item.parentId === host?.id);
 if (steps.length !== 2) {
   fail(`the note's subtasks did not survive the write: ${JSON.stringify(list.items, null, 2)}`);
 }
-if (labels[0] !== "Added by the note" || labels[1] !== "Step one" || labels[2] !== "Step two") {
-  fail(`dragging the task to the top did not bring its thread: ${JSON.stringify(labels)}`);
+const expectedOrder = [
+  "Added by the note", "Step one", "Deeper still", "Deepest of all", "Step two",
+];
+if (JSON.stringify(labels.slice(0, 5)) !== JSON.stringify(expectedOrder)) {
+  fail(`dragging the task to the top did not bring its whole thread in order: ${JSON.stringify(labels)}`);
 }
-if (!host.completed || !steps.every((step) => step.completed)) {
-  fail("ticking the task did not tick its thread.");
+
+// Nesting past one level is the point: a sub-thread under a sub-point.
+const stepOne = list.items.find((item) => item.label === "Step one");
+const deeper = list.items.find((item) => item.label === "Deeper still");
+const deepest = list.items.find((item) => item.label === "Deepest of all");
+if (deeper?.parentId !== stepOne?.id) {
+  fail(`a sub-thread was flattened: "Deeper still" should hang off "Step one".`);
+}
+if (deepest?.parentId !== deeper?.id) {
+  fail(`a third level was flattened: "Deepest of all" should hang off "Deeper still".`);
+}
+if (deeper?.depth !== 2 || deepest?.depth !== 3) {
+  fail(`depth was not recorded correctly: ${JSON.stringify({ deeper: deeper?.depth, deepest: deepest?.depth })}`);
+}
+
+const thread = [host, ...steps, deeper, deepest];
+if (!thread.every((item) => item?.completed)) {
+  fail("ticking the task did not tick every level of its thread.");
 }
 
 // --- auto-filing, with a vault trail ---

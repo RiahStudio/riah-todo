@@ -7,7 +7,9 @@ import test from "node:test";
 import {
   appendVaultTrail,
   childrenOf,
+  descendantsOf,
   localDateKey,
+  MAX_DEPTH,
   ops,
   readPriorities,
   readSettings,
@@ -44,13 +46,75 @@ test("a subtask sits directly under its task, whatever order the file is in", ()
   ]);
 });
 
-test("nesting only goes one deep", () => {
+test("a thread can keep nesting, and each item knows how deep it is", () => {
   scratch();
-  const parent = ops.add("Ship the launch").items[0];
-  const child = ops.add("Write the email", { parentId: parent.id }).items[1];
-  assert.throws(() => ops.add("Draft it", { parentId: child.id }), /cannot have subtasks/);
-  assert.throws(() => ops.setParent(parent.id, child.id), /cannot have subtasks/);
-  assert.throws(() => ops.setParent(parent.id, parent.id), /its own subtask/);
+  // Captain, 2026-07-29: sub-threads under sub-points are fine — the widget resizes.
+  let list = ops.add("Ship the launch");
+  let parentId = list.items[0].id;
+  const labels = ["Write the email", "Draft the subject", "Try a shorter one", "Ask Zach"];
+  for (const label of labels) {
+    list = ops.add(label, { parentId });
+    parentId = list.items.find((item) => item.label === label).id;
+  }
+  assert.deepEqual(list.items.map((item) => item.label), [
+    "Ship the launch", ...labels,
+  ], "the thread reads top down, deepest last");
+  assert.deepEqual(list.items.map((item) => item.depth), [0, 1, 2, 3, 4]);
+});
+
+test("nesting stops at a readable depth instead of going for ever", () => {
+  scratch();
+  let list = ops.add("Level 0");
+  let parentId = list.items[0].id;
+  for (let level = 1; level <= MAX_DEPTH; level += 1) {
+    list = ops.add(`Level ${level}`, { parentId });
+    parentId = list.items.find((item) => item.label === `Level ${level}`).id;
+  }
+  assert.equal(list.items.at(-1).depth, MAX_DEPTH);
+  assert.throws(() => ops.add("One too far", { parentId }), /as deep as it goes/);
+});
+
+test("a task cannot be moved inside its own thread", () => {
+  scratch();
+  const top = ops.add("Ship the launch").items[0];
+  const mid = ops.add("Write the email", { parentId: top.id }).items[1];
+  const deep = ops.add("Draft the subject", { parentId: mid.id }).items[2];
+
+  assert.throws(() => ops.setParent(top.id, top.id), /its own subtask/);
+  assert.throws(() => ops.setParent(top.id, mid.id), /inside its own thread/);
+  assert.throws(() => ops.setParent(top.id, deep.id), /inside its own thread/);
+  // And the list survived all that intact.
+  assert.equal(readPriorities().items.length, 3);
+});
+
+test("a loop written into the file is broken, not obeyed", () => {
+  const file = scratch();
+  writeFileSync(file, JSON.stringify({
+    date: localDateKey(),
+    items: [
+      { id: "a", label: "A", completed: false, parentId: "b" },
+      { id: "b", label: "B", completed: false, parentId: "a" },
+    ],
+  }));
+  const list = readPriorities();
+  assert.equal(list.items.length, 2, "neither task is lost");
+  assert.ok(list.items.some((item) => item.parentId === null), "the loop is cut");
+});
+
+test("moving a whole thread under another respects the depth limit", () => {
+  scratch();
+  // A three-deep thread...
+  const top = ops.add("Thread top").items[0];
+  const mid = ops.add("Middle", { parentId: top.id }).items[1];
+  ops.add("Bottom", { parentId: mid.id });
+  // ...and a chain to hang it off.
+  let list = ops.add("Other");
+  let deepest = list.items.find((item) => item.label === "Other").id;
+  for (let level = 1; level <= MAX_DEPTH; level += 1) {
+    list = ops.add(`Deep ${level}`, { parentId: deepest });
+    deepest = list.items.find((item) => item.label === `Deep ${level}`).id;
+  }
+  assert.throws(() => ops.setParent(top.id, deepest), /deeper than/);
 });
 
 test("a subtask whose task vanished is promoted, not dropped", () => {
@@ -212,4 +276,77 @@ test("a vault that is not set, or has moved, costs nothing", () => {
   const done = [{ id: "a", label: "Done", completed: true, completedAt: null, parentId: null }];
   assert.equal(appendVaultTrail(done, { vaultPath: "", vaultSubfolder: "" }), null);
   assert.equal(appendVaultTrail(done, { vaultPath: "\u0000not a path", vaultSubfolder: "" }), null);
+});
+
+test("ticking a deep task ticks everything beneath it", () => {
+  scratch();
+  const top = ops.add("Ship the launch").items[0];
+  const mid = ops.add("Write the email", { parentId: top.id }).items[1];
+  ops.add("Draft the subject", { parentId: mid.id });
+  const list = ops.add("Pick a send time", { parentId: mid.id });
+  const deepIds = descendantsOf(list, mid.id).map((item) => item.id);
+  assert.equal(deepIds.length, 2);
+
+  const afterMid = ops.toggle(mid.id);
+  assert.ok(
+    afterMid.items.filter((item) => deepIds.includes(item.id)).every((item) => item.completed),
+    "the whole sub-thread went with it",
+  );
+  assert.equal(afterMid.items.find((item) => item.id === top.id).completed, true,
+    "and the task above it is finished, since that was its only branch");
+});
+
+test("reopening something deep reopens every task above it", () => {
+  scratch();
+  const top = ops.add("Ship the launch").items[0];
+  const mid = ops.add("Write the email", { parentId: top.id }).items[1];
+  const deep = ops.add("Draft the subject", { parentId: mid.id }).items[2];
+
+  ops.toggle(top.id);
+  const reopened = ops.toggle(deep.id);
+  assert.equal(reopened.items.find((item) => item.id === deep.id).completed, false);
+  assert.equal(reopened.items.find((item) => item.id === mid.id).completed, false,
+    "its parent reopened");
+  assert.equal(reopened.items.find((item) => item.id === top.id).completed, false,
+    "and so did the top of the thread");
+});
+
+test("removing a task takes the whole thread beneath it", () => {
+  scratch();
+  const top = ops.add("Ship the launch").items[0];
+  const mid = ops.add("Write the email", { parentId: top.id }).items[1];
+  ops.add("Draft the subject", { parentId: mid.id });
+  ops.add("Call the bank");
+  assert.deepEqual(ops.remove(top.id).items.map((item) => item.label), ["Call the bank"]);
+});
+
+test("a deep task is not filed while anything under it is still open", () => {
+  const longAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
+  const list = {
+    date: localDateKey(),
+    items: [
+      { id: "a", label: "Top", completed: true, completedAt: longAgo, parentId: null },
+      { id: "b", label: "Middle", completed: true, completedAt: longAgo, parentId: "a" },
+      { id: "c", label: "Still going", completed: false, completedAt: null, parentId: "b" },
+    ],
+  };
+  assert.deepEqual(sweepCompleted(list, Date.now(), 2 * 60 * 60 * 1000), [],
+    "nothing may be filed while work remains three levels down");
+  assert.equal(list.items.length, 3);
+});
+
+test("filing a finished thread files all of it, at any depth", () => {
+  const longAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
+  const list = {
+    date: localDateKey(),
+    items: [
+      { id: "a", label: "Top", completed: true, completedAt: longAgo, parentId: null },
+      { id: "b", label: "Middle", completed: true, completedAt: longAgo, parentId: "a" },
+      { id: "c", label: "Deep", completed: true, completedAt: longAgo, parentId: "b" },
+      { id: "d", label: "Untouched", completed: false, completedAt: null, parentId: null },
+    ],
+  };
+  const removed = sweepCompleted(list, Date.now(), 2 * 60 * 60 * 1000);
+  assert.deepEqual(removed.map((item) => item.id), ["a", "b", "c"]);
+  assert.deepEqual(list.items.map((item) => item.id), ["d"]);
 });

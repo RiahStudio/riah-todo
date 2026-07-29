@@ -200,8 +200,10 @@
   }
   .error[hidden] { display: none; }
 
+  /* Threads nest as deep as you like (up to six levels). The step narrows as it
+     descends so the words keep their room on a narrow window. */
   li.child {
-    margin-left: 30px;
+    margin-left: calc(30px + (var(--depth) - 1) * 22px);
     min-height: 44px;
     position: relative;
   }
@@ -217,6 +219,9 @@
     border-bottom-left-radius: 5px;
   }
   li.child .label { font-size: 0.92rem; }
+  li.child[style*="--depth: 3"] .label,
+  li.child[style*="--depth: 4"] .label,
+  li.child[style*="--depth: 5"] .label { font-size: 0.88rem; }
 
   .sub {
     flex: none;
@@ -504,6 +509,8 @@
   let subtaskFor = null;
   // True while the list file cannot be read — the UI must not pretend it's empty.
   let needsRecovery = false;
+  // How deep threads may nest. The server is the authority; this is a fallback.
+  let maxDepth = 5;
 
   const stored = localStorage.getItem("riah-todo-theme");
   if (stored) document.documentElement.dataset.theme = stored;
@@ -558,6 +565,7 @@
     addBtn.disabled = needsRecovery || !newEl.value.trim();
     newEl.placeholder = needsRecovery ? "Fix the list file first" : "Add a priority";
     if ("undo" in payload) showUndo(payload.undo);
+    if (Number.isInteger(payload.maxDepth)) maxDepth = payload.maxDepth;
     return payload.priorities;
   }
 
@@ -675,11 +683,14 @@
     kill.setAttribute("aria-label", "Remove " + item.label);
     kill.addEventListener("click", () => run("/api/remove", { id: item.id }));
 
-    // Only a task gets a "+" — nesting goes one deep, like a comment reply.
-    if (item.parentId) {
+    // Any row can start a sub-thread, down to the depth limit — sub-points under
+    // sub-points are the point.
+    const depth = item.depth ?? 0;
+    if (depth > 0) {
       li.classList.add("child");
-      li.append(grip, tick, label, kill);
-    } else {
+      li.style.setProperty("--depth", String(depth));
+    }
+    if (depth < maxDepth) {
       const sub = document.createElement("button");
       sub.type = "button";
       sub.className = "sub";
@@ -691,6 +702,8 @@
         render(state);
       });
       li.append(grip, tick, label, sub, kill);
+    } else {
+      li.append(grip, tick, label, kill);
     }
     wireDrag(li);
     return li;
@@ -735,15 +748,18 @@
       const target = state.items.find((item) => item.id === targetId);
       if (!dragged || !target) return;
 
-      // Drop a task onto a subtask's row and you mean its parent's thread.
-      if (dragged.parentId) {
-        const into = target.parentId ?? target.id;
-        run("/api/set-parent", { id: dragId, parentId: into === dragged.parentId ? dragged.parentId : into });
+      // Dropping a nested item onto another row re-parents it there, so you can
+      // pull something out of a thread or push it deeper by dragging.
+      if ((dragged.depth ?? 0) > 0) {
+        run("/api/set-parent", { id: dragId, parentId: target.id });
         return;
       }
-      // A task moves as a whole thread, so it can only land above another task.
-      const before = target.parentId ?? target.id;
-      run("/api/move", { id: dragId, beforeId: before });
+      // A top-level task moves as a whole thread, so it lands above another
+      // top-level task — never inside one.
+      const byId = new Map(state.items.map((entry) => [entry.id, entry]));
+      let root = target;
+      while (root.parentId && byId.has(root.parentId)) root = byId.get(root.parentId);
+      run("/api/move", { id: dragId, beforeId: root.id });
     });
   }
 

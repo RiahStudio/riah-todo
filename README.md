@@ -55,7 +55,7 @@ the board page and the AI tools — the note itself needs neither.
 | Click the words | Edits them, right there. Enter saves, Esc cancels |
 | Right-click a row | The same thing — straight into editing |
 | Drag a row up or down | Reorders it |
-| Hover a task, click `+` | Starts a subtask under it |
+| Hover a row, click `+` | Starts a subtask under it — including under a subtask |
 | Type at the bottom, Enter | Adds an item |
 | Hover a row, click the `x` | Removes it |
 | Drag the note | Moves it. Drag an edge or corner to resize |
@@ -70,18 +70,20 @@ opens in the top-right corner of whichever screen holds the tray icon.
 The icon is the status: one bar per item, green once ticked, and a single green
 check when the list is clear.
 
-## Subtasks
+## Subtasks, and sub-subtasks
 
-A task can hold steps, threaded under it like replies. Hover a task, click the
-`+`, type. Nesting stops at one level on purpose — a to-do list that needs a tree
-is a project, and this is not a project tool.
+A task can hold steps, threaded under it like replies — and those steps can hold
+their own. Hover any row, click the `+`, type. **Six levels deep**, which is far
+past where most lists ever go; the note narrows each step in as it descends, and
+you can widen the window when a thread gets long.
 
-Ticking a task ticks its whole thread. Ticking the last open step finishes the
-task; reopening any step reopens it. A task is never filed while one of its steps
-is still open, and deleting a task takes its steps with it.
+Ticking anything ticks its whole thread beneath it. Ticking the last open item
+finishes the one above, all the way up. Reopening something deep reopens the
+whole line above it. A task is never filed while any work under it is still open,
+and deleting a task takes its entire thread with it.
 
-Twelve tasks, twelve steps each, 120 characters a line. All deliberate: a list you
-can't read at a glance isn't a list of priorities.
+Twelve top-level tasks, twelve children each, 120 characters a line. All
+deliberate: a list you can't read at a glance isn't a list of priorities.
 
 ## Filing, and the trail it leaves
 

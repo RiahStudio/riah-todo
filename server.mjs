@@ -10,7 +10,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  MAX_ITEMS, MAX_SUBTASKS, ops, readFiled, readPriorities, readPrioritiesForDisplay, readSettings,
+  MAX_DEPTH, MAX_ITEMS, MAX_SUBTASKS, ops, readFiled, readPriorities, readPrioritiesForDisplay, readSettings,
   storePath, undoAvailable,
 } from "./lib/store.mjs";
 
@@ -118,7 +118,7 @@ async function handleApi(req, res, urlPath) {
       sendJson(res, 200, {
         ok: true, needsRecovery: true, error: shown.error, file: shown.file,
         priorities: { date: "", items: [] }, settings: readSettings(),
-        max: MAX_ITEMS, maxSubtasks: MAX_SUBTASKS,
+        max: MAX_ITEMS, maxSubtasks: MAX_SUBTASKS, maxDepth: MAX_DEPTH,
       });
       return;
     }
@@ -129,6 +129,7 @@ async function handleApi(req, res, urlPath) {
       settings: readSettings(),
       max: MAX_ITEMS,
       maxSubtasks: MAX_SUBTASKS,
+      maxDepth: MAX_DEPTH,
     });
     return;
   }
