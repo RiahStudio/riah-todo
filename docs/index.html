@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Riah To-Do</title>
+<meta name="description" content="The to-do list you&rsquo;ll actually open. It sits by your clock. One click and your day is in front of you." />
+<meta name="theme-color" content="#0F0F11" />
+<meta name="color-scheme" content="dark light" />
+<link rel="icon" type="image/svg+xml" href="assets/riah-todo.svg" />
+<link rel="stylesheet" href="assets/fonts/fonts.css" />
+
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Riah To-Do" />
+<meta property="og:description" content="The to-do list you&rsquo;ll actually open. It sits by your clock. One click and your day is in front of you." />
+<meta name="twitter:card" content="summary" />
+
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0F0F11;
+    --surface: #141417;
+    --raised: #18181C;
+    --ink: #EDEDEF;
+    --body: #9A9AA2;
+    --dim: #8B8B93;
+    --rule: rgba(255, 255, 255, 0.12);
+    --rule-strong: rgba(255, 255, 255, 0.16);
+    --pink: #FF5CA8;
+    --keep: #3FCF7F;
+    --on-pink: #12060B;
+    --font-brand: 'Instrument Serif', 'Palatino Linotype', Georgia, serif;
+    --font-ui: 'Space Grotesk', system-ui, 'Segoe UI', sans-serif;
+    --font-mono: 'Space Mono', ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --auto-light: 1; }
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+    --bg: #F6F4F3;
+    --surface: #FFFFFF;
+    --raised: #EEEBEA;
+    --ink: #181719;
+    --body: #5F5D63;
+    --dim: #6B6870;
+    --rule: rgba(24, 23, 25, 0.13);
+    --rule-strong: rgba(24, 23, 25, 0.2);
+    --pink: #C21868;
+    --keep: #158A46;
+    --on-pink: #FFFFFF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 16px/1.6 var(--font-ui);
+    padding: 0 20px 72px;
+    overflow-x: hidden;
+  }
+  main { width: 100%; max-width: 620px; margin: 0 auto; }
+
+  /* --- top bar --- */
+  .bar {
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 26px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .lockup { font: 400 21px/1 var(--font-brand); letter-spacing: 0.01em; }
+  .lockup em { color: var(--pink); font-style: italic; }
+  .lockup span { font-family: var(--font-ui); font-size: 15px; font-weight: 500; letter-spacing: 0.02em; }
+  .bar a {
+    color: var(--dim);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 2px;
+  }
+  .bar a:hover, .bar a:focus-visible { color: var(--ink); border-bottom-color: var(--pink); }
+
+  /* --- hero --- */
+  .hero { padding: 60px 0 8px; }
+  h1 {
+    font: 400 clamp(34px, 8vw, 52px)/1.08 var(--font-brand);
+    letter-spacing: -0.01em;
+    max-width: 13ch;
+  }
+  .lede {
+    color: var(--body);
+    font-size: clamp(17px, 4vw, 19px);
+    max-width: 46ch;
+    margin-top: 20px;
+  }
+
+  /* --- buttons --- */
+  .cta { margin: 34px 0 0; }
+  .btn {
+    display: inline-block;
+    background: var(--pink);
+    color: var(--on-pink);
+    font: 500 16px/1 var(--font-ui);
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    padding: 17px 30px;
+    border-radius: 4px;
+    transition: transform 120ms ease, filter 120ms ease;
+  }
+  .btn:hover, .btn:focus-visible { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .under {
+    color: var(--dim);
+    font-size: 14px;
+    margin-top: 13px;
+  }
+  .spec {
+    color: var(--dim);
+    font: 400 13px/1 var(--font-mono);
+    letter-spacing: 0.04em;
+    margin-top: 15px;
+  }
+
+  /* --- sections --- */
+  section { padding-top: 62px; }
+  h2 {
+    font: 400 clamp(25px, 5.5vw, 31px)/1.2 var(--font-brand);
+    letter-spacing: -0.005em;
+    margin-bottom: 18px;
+  }
+  p { color: var(--body); max-width: 54ch; }
+  p + p { margin-top: 15px; }
+  strong { color: var(--ink); font-weight: 600; }
+
+  .steps { list-style: none; counter-reset: step; margin-top: 4px; }
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    color: var(--body);
+    padding: 13px 0 13px 44px;
+    border-bottom: 1px solid var(--rule);
+    max-width: 54ch;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 12px;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--rule-strong);
+    border-radius: 50%;
+    color: var(--dim);
+    font: 400 13px/25px var(--font-mono);
+    text-align: center;
+  }
+  .steps li:last-child { border-bottom: 0; }
+
+  .feature { padding: 20px 0; border-top: 1px solid var(--rule); max-width: 54ch; }
+  .feature:first-of-type { border-top: 0; padding-top: 4px; }
+
+  dl { max-width: 54ch; }
+  dt {
+    color: var(--ink);
+    font-weight: 600;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    margin-top: 20px;
+  }
+  dl > dt:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
+  dd { color: var(--body); margin-top: 6px; }
+
+  .price { color: var(--body); }
+  .close { padding-top: 26px; }
+
+  footer {
+    max-width: 620px;
+    margin: 76px auto 0;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
+    color: var(--dim);
+    font-size: 13px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    align-items: center;
+  }
+  footer a { color: var(--dim); text-decoration: none; border-bottom: 1px solid var(--rule-strong); }
+  footer a:hover, footer a:focus-visible { color: var(--ink); }
+
+  /* --- the note, drawn --- */
+  .shot {
+    margin: 46px 0 0;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .note {
+    width: 100%;
+    max-width: 306px;
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-radius: 8px;
+    padding: 15px 16px 14px;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+    font-size: 14px;
+    user-select: none;
+  }
+  .note-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 11px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .note-top .lockup { font-size: 18px; }
+  .note-top .lockup span { font-size: 13px; }
+  .tally { color: var(--dim); font: 400 12px/1 var(--font-mono); }
+  .band {
+    color: var(--dim);
+    font: 400 10px/1 var(--font-mono);
+    letter-spacing: 0.14em;
+    padding: 15px 0 8px;
+  }
+  .row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
+  .box {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 3px;
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+  }
+  .row.done .box { background: var(--keep); border-color: var(--keep); position: relative; }
+  .row.done .box::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--surface);
+    border-width: 0 2px 2px 0;
+    transform: rotate(43deg);
+  }
+  .row.done .label { color: var(--dim); text-decoration: line-through; }
+  .label { color: var(--ink); line-height: 1.35; }
+  .row.step { padding-left: 22px; }
+  .row.step2 { padding-left: 44px; }
+  .row.step .label, .row.step2 .label { color: var(--body); font-size: 13px; }
+
+  @media (max-width: 620px) {
+    .shot { justify-content: center; }
+    body { padding-bottom: 56px; }
+    .hero { padding-top: 44px; }
+    section { padding-top: 52px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="lockup"><em>Riah</em> <span>To-Do</span></div>
+  <a href="https://github.com/RiahStudio/riah-todo">Source</a>
+</div>
+
+<main>
+
+  <div class="hero">
+    <h1>The to-do list you&rsquo;ll actually open.</h1>
+    <p class="lede">
+      It sits by your clock. One click and your day is in front of you. Click
+      away and it&rsquo;s out of your face.
+    </p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/RiahStudio/riah-todo/releases/latest">Get Riah To-Do</a>
+      <p class="under">Free, and running in about a minute.</p>
+    </div>
+  </div>
+
+  <div class="shot" role="img" aria-label="The note open beside the Windows clock, showing today&rsquo;s tasks with steps indented underneath, and a task parked under Later.">
+    <div class="note" aria-hidden="true">
+      <div class="note-top">
+        <div class="lockup"><em>Riah</em> <span>To-Do</span></div>
+        <div class="tally">3 left of 4</div>
+      </div>
+      <div class="band">TODAY</div>
+      <div class="row"><span class="box"></span><span class="label">Ship the Gumroad listing</span></div>
+      <div class="row done step"><span class="box"></span><span class="label">Write the description</span></div>
+      <div class="row step"><span class="box"></span><span class="label">Shoot the cover</span></div>
+      <div class="row step2"><span class="box"></span><span class="label">Borrow the good lamp</span></div>
+      <div class="row"><span class="box"></span><span class="label">Call the accountant back</span></div>
+      <div class="band">TOMORROW</div>
+      <div class="row"><span class="box"></span><span class="label">Selah launch checklist</span></div>
+      <div class="band">LATER</div>
+      <div class="row"><span class="box"></span><span class="label">Riah Money</span></div>
+    </div>
+  </div>
+
+  <section>
+    <h2>The problem</h2>
+    <p>
+      We all want to be organized. We&rsquo;ve all downloaded twenty different
+      to-do apps to prove it.
+    </p>
+    <p>
+      And most of us never opened one of them twice. Not because we stopped
+      caring, but because opening it was a chore. Another window, another tab,
+      another thing to go and find.
+    </p>
+    <p>
+      So the list goes stale inside a week, and your whole day moves back into
+      your head.
+    </p>
+  </section>
+
+  <section>
+    <h2>The thing</h2>
+    <p>
+      Riah To-Do is a note that lives by your clock, next to your battery and
+      your wifi. Click it and today&rsquo;s list is right there, where you left
+      it. Check something off. Click away and it&rsquo;s gone.
+    </p>
+    <p>
+      No window to keep open. Nothing to switch to. That&rsquo;s why you&rsquo;ll
+      still be using it in March.
+    </p>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>Download it and drop the folder wherever you like.</li>
+      <li>Double-click Start Riah To-Do.</li>
+      <li>An icon appears by your clock. Click it and start typing.</li>
+    </ol>
+    <p style="margin-top:18px">About a minute, start to finish.</p>
+  </section>
+
+  <section>
+    <h2>What it does</h2>
+
+    <div class="feature">
+      <p>
+        <strong>Checked-off tasks clear themselves.</strong> Two hours after you
+        check something off, it leaves the list (adjustable, of course).
+        What&rsquo;s in front of you is only ever what&rsquo;s actually left.
+      </p>
+    </div>
+
+    <div class="feature">
+      <p>
+        <strong>Everything you finish lands in your Obsidian vault.</strong>
+        Point it at your second brain and each day writes itself into a dated
+        note, steps indented under their task. Your done-log builds itself while
+        you work.
+      </p>
+    </div>
+
+    <div class="feature">
+      <p>
+        <strong>Nothing gets lost overnight.</strong> Whatever you didn&rsquo;t
+        finish is waiting for you tomorrow.
+      </p>
+    </div>
+
+    <div class="feature">
+      <p>
+        <strong>Steps under steps.</strong> Break a task into steps, and those
+        steps into steps, six levels deep when a job needs it.
+      </p>
+    </div>
+
+    <div class="feature">
+      <p>
+        <strong>It stays where you put it.</strong> Move it, resize it, and it
+        opens exactly there every time.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The usual questions</h2>
+    <dl>
+      <dt>Is my list private?</dt>
+      <dd>
+        It&rsquo;s one small JSON file on your own PC and it stays there. Nothing
+        to sign up for, nothing sent anywhere.
+      </dd>
+
+      <dt>Am I locked in?</dt>
+      <dd>No. Your whole list is that one file. Copy it and you&rsquo;ve got everything.</dd>
+
+      <dt>Do I need to install a pile of stuff first?</dt>
+      <dd>No. It runs on what Windows already ships with.</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Price</h2>
+    <p class="price">Free. Yours to keep, MIT licensed.</p>
+    <div class="cta close">
+      <a class="btn" href="https://github.com/RiahStudio/riah-todo/releases/latest">Get Riah To-Do</a>
+      <p class="spec">Windows 10 and 11.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>Riah Studio</span>
+  <a href="https://github.com/RiahStudio/riah-todo">GitHub</a>
+  <a href="https://github.com/RiahStudio/riah-todo/blob/main/LICENSE">MIT License</a>
+</footer>
+
+<script>
+  // Follow the reader's system theme, and keep following it if they change it
+  // while the page is open.
+  (function () {
+    var q = window.matchMedia("(prefers-color-scheme: light)");
+    var apply = function () {
+      document.documentElement.dataset.theme = q.matches ? "light" : "dark";
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.content = q.matches ? "#F6F4F3" : "#0F0F11";
+    };
+    apply();
+    if (q.addEventListener) q.addEventListener("change", apply);
+    else if (q.addListener) q.addListener(apply);
+  })();
+</script>
+
+</body>
+</html>

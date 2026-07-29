@@ -223,6 +223,39 @@
   li.child[style*="--depth: 4"] .label,
   li.child[style*="--depth: 5"] .label { font-size: 0.88rem; }
 
+  li.section-heading {
+    display: block;
+    min-height: 0;
+    padding: 20px 0 6px;
+    border-bottom: 0;
+    color: var(--dim);
+    font: 700 0.68rem/1.2 var(--font-mono);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+  li.section-heading:hover { background: transparent; }
+  #list li.section-heading:first-child { padding-top: 4px; }
+
+  /* Which day a task is for. Quiet until you look for it. */
+  .when {
+    flex: none;
+    min-height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--dim);
+    font: 700 0.64rem/1 var(--font-mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
+  li:hover .when, li:focus-within .when, .when:focus-visible { opacity: 1; }
+  .when:hover { color: var(--pink); border-color: var(--pink); }
+  @media (pointer: coarse) { .when { opacity: 1; } }
+
   .sub {
     flex: none;
     width: 30px;
@@ -423,7 +456,7 @@
   <ol id="list"></ol>
   <div class="empty" id="empty" hidden>
     Nothing chosen yet.
-    <span>Add what today is actually for — up to twelve.</span>
+    <span>Add what today is actually for.</span>
   </div>
 
   <form class="add" id="add">
@@ -511,6 +544,8 @@
   let needsRecovery = false;
   // How deep threads may nest. The server is the authority; this is a fallback.
   let maxDepth = 5;
+  let sections = ["today", "tomorrow", "future"];
+  let sectionLabels = { today: "Today", tomorrow: "Tomorrow", future: "Later" };
 
   const stored = localStorage.getItem("riah-todo-theme");
   if (stored) document.documentElement.dataset.theme = stored;
@@ -566,6 +601,8 @@
     newEl.placeholder = needsRecovery ? "Fix the list file first" : "Add a priority";
     if ("undo" in payload) showUndo(payload.undo);
     if (Number.isInteger(payload.maxDepth)) maxDepth = payload.maxDepth;
+    if (Array.isArray(payload.sections)) sections = payload.sections;
+    if (payload.sectionLabels) sectionLabels = payload.sectionLabels;
     return payload.priorities;
   }
 
@@ -586,8 +623,11 @@
 
   function render(next) {
     state = next;
-    const done = state.items.filter((item) => item.completed).length;
-    const total = state.items.length;
+    // Only today's work counts. Parking something for later must not inflate
+    // the number — that would defeat the point of parking it.
+    const todays = state.items.filter((item) => (item.section ?? "today") === "today");
+    const done = todays.filter((item) => item.completed).length;
+    const total = todays.length;
 
     dateEl.textContent = state.date
       ? new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" })
@@ -600,10 +640,24 @@
       : `<strong>${total - done}</strong><span>left of ${total} — ${done} done</span>`;
 
     // "Nothing chosen yet" is a lie when the truth is "we could not read it".
-    emptyEl.hidden = total > 0 || needsRecovery;
+    emptyEl.hidden = state.items.length > 0 || needsRecovery;
 
     const nodes = [];
+    // A heading appears once, above the first task of its group. With only
+    // today's work there is nothing to disambiguate, so none is drawn.
+    const used = new Set(state.items.filter((i) => !i.parentId).map((i) => i.section ?? "today"));
+    const showHeadings = used.size > 1;
+    const headed = new Set();
     for (const item of state.items) {
+      const section = item.section ?? "today";
+      if (showHeadings && !item.parentId && !headed.has(section)) {
+        headed.add(section);
+        const heading = document.createElement("li");
+        heading.className = "section-heading";
+        heading.setAttribute("role", "presentation");
+        heading.textContent = sectionLabels[section] ?? section;
+        nodes.push(heading);
+      }
       nodes.push(row(item));
       // The box for a new step sits right under the task it belongs to.
       if (subtaskFor === item.id) nodes.push(subtaskForm(item));
@@ -690,6 +744,21 @@
       li.classList.add("child");
       li.style.setProperty("--depth", String(depth));
     }
+    if (!item.parentId) {
+      const when = document.createElement("button");
+      when.type = "button";
+      when.className = "when";
+      const current = item.section ?? "today";
+      when.textContent = sectionLabels[current] ?? current;
+      const nextSection = sections[(sections.indexOf(current) + 1) % sections.length];
+      when.title = `For ${sectionLabels[current]} — click for ${sectionLabels[nextSection]}`;
+      when.setAttribute("aria-label", `${item.label} is for ${sectionLabels[current]}. Move it to ${sectionLabels[nextSection]}.`);
+      when.addEventListener("click", async () => {
+        await run("/api/set-section", { id: item.id, section: nextSection });
+        say(`"${item.label}" moved to ${sectionLabels[nextSection]}.`);
+      });
+      li.append(when);
+    }
     if (depth < maxDepth) {
       const sub = document.createElement("button");
       sub.type = "button";
@@ -748,8 +817,14 @@
       const target = state.items.find((item) => item.id === targetId);
       if (!dragged || !target) return;
 
-      // Dropping a nested item onto another row re-parents it there, so you can
-      // pull something out of a thread or push it deeper by dragging.
+      // Same parent means you are sorting a thread, not restructuring it — so a
+      // step dropped on one of its own siblings just changes the order.
+      if ((dragged.parentId ?? null) === (target.parentId ?? null)) {
+        run("/api/move", { id: dragId, beforeId: target.id });
+        return;
+      }
+      // Dropping a nested item somewhere else re-parents it, so you can pull
+      // something out of a thread or push it deeper by dragging.
       if ((dragged.depth ?? 0) > 0) {
         run("/api/set-parent", { id: dragId, parentId: target.id });
         return;

@@ -118,8 +118,11 @@ if ($script:HasNative) { try { $script:DpiAware = [RiahTodo.Native]::SetProcessD
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 # --- the list on disk (same file Riah Code and the board use) ---
-$script:MaxItems = 12
-$script:MaxSubtasks = 12
+# Backstops against a runaway paste, not a rule about how many things a person
+# may have on today. (Captain, 2026-07-29: "we absolutely should not have a
+# 12-task limit".) Matches lib/store.mjs.
+$script:MaxItems = 100
+$script:MaxSubtasks = 100
 # 0 is a top-level task, so six levels. Matches MAX_DEPTH in lib/store.mjs.
 $script:MaxDepth = 5
 $script:MaxLabel = 120
@@ -260,7 +263,11 @@ function Read-Store {
           try { if ($it.completedAt) { $at = [string]$it.completedAt } } catch {}
           $parent = $null
           try { if ($it.parentId) { $parent = [string]$it.parentId } } catch {}
-          [void]$items.Add(@{ id = $id; label = $label; completed = $done; completedAt = $at; parentId = $parent })
+          # Read the section back too. Leaving it out here meant a task parked
+          # for later silently became "today" on the very next read.
+          $sec = 'today'
+          try { if ($it.section -and @('today','tomorrow','future') -contains [string]$it.section) { $sec = [string]$it.section } } catch {}
+          [void]$items.Add(@{ id = $id; label = $label; completed = $done; completedAt = $at; parentId = $parent; section = $sec })
         }
       }
     }
@@ -288,6 +295,7 @@ function Read-Store {
           completed = [bool]$it.completed
           completedAt = $(if ($it.completedAt) { [string]$it.completedAt } else { $null })
           parentId = $(if ($it.parentId) { [string]$it.parentId } else { $null })
+          section = $(if ($it.section -and @('today','tomorrow','future') -contains [string]$it.section) { [string]$it.section } else { 'today' })
         })
       }
       $threaded = @(Invoke-Thread @($again.ToArray()))
@@ -303,8 +311,8 @@ function Read-Store {
 function Invoke-Thread($items) {
   # Mirror of lib/store.mjs: a depth-first walk, so each item sits directly under
   # its parent with its whole thread beneath it and carries a derived depth.
-  # Orphans and loops are promoted rather than dropped; the twelve cap counts
-  # TASKS, not rows.
+  # Orphans and loops are promoted rather than dropped; the cap counts TASKS,
+  # not rows.
   #
   # It builds fresh rows rather than editing what it was handed, so it works on
   # anything list-shaped -- including the PSCustomObjects ConvertFrom-Json hands
@@ -320,6 +328,7 @@ function Invoke-Thread($items) {
       completed = [bool]$i.completed
       completedAt = $i.completedAt
       parentId = $parent
+      section = $(if ($i.section -and @('today','tomorrow','future') -contains [string]$i.section) { [string]$i.section } else { 'today' })
       depth = 0
     })
   }
@@ -354,8 +363,13 @@ function Invoke-Thread($items) {
   $out = New-Object System.Collections.ArrayList
   # An explicit stack rather than recursion: PowerShell functions cannot see
   # their own name reliably inside a scriptblock, and this keeps it obvious.
+  # Today first, then tomorrow, then later; order within a group is kept.
+  $ordered = New-Object System.Collections.ArrayList
+  foreach ($sec in @('today','tomorrow','future')) {
+    foreach ($r in $roots) { if ([string]$r.section -eq $sec) { [void]$ordered.Add($r) } }
+  }
   $n = 0
-  foreach ($r in $roots) {
+  foreach ($r in $ordered) {
     if ($n -ge $script:MaxItems) { break }
     $n++
     $stack = New-Object System.Collections.Stack
@@ -364,6 +378,8 @@ function Invoke-Thread($items) {
       $frame = $stack.Pop()
       $node = $frame.item
       $node.depth = $frame.depth
+      # A thread belongs to one section -- the task's.
+      $node.section = [string]$r.section
       [void]$out.Add($node)
       $key = [string]$node.id
       if (-not $kids.ContainsKey($key)) { continue }
@@ -461,6 +477,7 @@ function Write-Store($list) {
         completed = [bool]$i.completed
         completedAt = $i.completedAt
         parentId = $i.parentId
+        section = $i.section
       }
     }
     $obj = [ordered]@{ date = [string]$list.date; items = @($rows) }
@@ -678,7 +695,7 @@ function Add-PriorityUnlocked([string]$label, [string]$parentId = $null) {
   }
   $items = New-Object System.Collections.ArrayList
   foreach ($i in @($script:List.items)) { [void]$items.Add($i) }
-  [void]$items.Add(@{ id = New-Id; label = $value; completed = $false; completedAt = $null; parentId = $parentId; depth = 0 })
+  [void]$items.Add(@{ id = New-Id; label = $value; completed = $false; completedAt = $null; parentId = $parentId; section = 'today'; depth = 0 })
   $script:List.items = @(Invoke-Thread @($items.ToArray()))
   [void](Write-Store $script:List)
   Refresh-Note
@@ -750,6 +767,28 @@ function Move-BeforeUnlocked([string]$id, [string]$beforeId) {
   if ($at -lt 0) { foreach ($m in $moving) { [void]$rest.Add($m) } }
   else { $rest.InsertRange($at, $moving) }
   $script:List.items = @(Invoke-Thread @($rest.ToArray()))
+  [void](Write-Store $script:List)
+  Refresh-Note
+}
+
+function Set-SectionUnlocked([string]$id, [string]$section) {
+  [void](Sync-List $true)
+  $item = $null
+  foreach ($i in @($script:List.items)) { if ($i.id -eq $id) { $item = $i; break } }
+  if ($null -eq $item) { return }
+  # Always section the TASK, never a step -- a thread stays whole.
+  $root = $item
+  $guard = 0
+  while ($root.parentId -and $guard -lt 50) {
+    $guard++
+    $next = $null
+    foreach ($p in @($script:List.items)) { if ($p.id -eq $root.parentId) { $next = $p; break } }
+    if ($null -eq $next) { break }
+    $root = $next
+  }
+  $root.section = $section
+  foreach ($kid in @(Get-Descendants $root.id)) { $kid.section = $section }
+  $script:List.items = @(Invoke-Thread @($script:List.items))
   [void](Write-Store $script:List)
   Refresh-Note
 }
@@ -847,6 +886,9 @@ function Move-Before([string]$id, [string]$beforeId) {
 function Set-Parent([string]$id, [string]$parentId) {
   Invoke-Locked { Set-ParentUnlocked $id $parentId }
 }
+function Set-Section([string]$id, [string]$section) {
+  Invoke-Locked { Set-SectionUnlocked $id $section }
+}
 function Remove-Priority([string]$id) {
   Invoke-Locked { Remove-PriorityUnlocked $id }
 }
@@ -898,6 +940,8 @@ $ADD_H = 38
 $FOOT_H = 4
 # How far a subtask is stepped in, and how wide the "+" that starts one is.
 $THREAD_INDENT = 24
+# Room above the first task of a group for its heading.
+$SECTION_H = 26
 $PLUS_W = 22
 # Drag a row this far before it counts as reordering rather than a click.
 $ROW_DRAG_SLOP = 5
@@ -941,6 +985,7 @@ $script:RowDragArmed = $false
 $script:RowDragFrom = $null
 $script:DropBeforeId = $null
 $script:DropAtEnd = $false
+$script:DropAfterId = $null
 $script:RowDragY = 0
 $script:HoverPlus = $false
 
@@ -982,14 +1027,34 @@ function Get-HeadHeight($g) {
   return $h
 }
 
+function Test-HasOtherSections {
+  foreach ($i in @($script:List.items)) {
+    if (-not $i.parentId -and [string]$i.section -ne 'today') { return $true }
+  }
+  return $false
+}
+
 function Measure-Rows($g) {
+  $script:HasOtherSections = Test-HasOtherSections
   # Rows wrap to the note's width, so a real sentence stays readable instead of
   # being cut off with dots. Heights are measured once and reused for hit-testing.
   $rows = New-Object System.Collections.ArrayList
   $y = $PAD + (Get-HeadHeight $g) + $TALLY_H
+  $seenSection = @{}
   foreach ($i in @($script:List.items)) {
     $depth = 0
     if ($null -ne $i.depth) { $depth = [int]$i.depth }
+    # A header appears once, above the first task of its group. "Today" is not
+    # drawn when nothing else exists -- an unheaded list is the common case.
+    $header = $null
+    if ($depth -eq 0) {
+      $sec = [string]$i.section
+      if (-not $seenSection.ContainsKey($sec)) {
+        $seenSection[$sec] = $true
+        if ($sec -ne 'today' -or $script:HasOtherSections) { $header = $sec }
+      }
+    }
+    if ($header) { $y += $SECTION_H }
     $w = Get-TextWidth $depth
     if ($w -lt 60) { $w = 60 }
     $font = if ($i.completed) { $F.RowDone } else { $F.Row }
@@ -999,7 +1064,7 @@ function Measure-Rows($g) {
       $needed = [int][Math]::Ceiling($size.Height) + 12
       if ($needed -gt $h) { $h = $needed }
     } catch {}
-    [void]$rows.Add(@{ id = $i.id; item = $i; y = $y; h = $h; depth = $depth; child = ($depth -gt 0) })
+    [void]$rows.Add(@{ id = $i.id; item = $i; y = $y; h = $h; depth = $depth; child = ($depth -gt 0); header = $header })
     $y += $h + $ROW_GAP_Y
   }
   $script:Rows = @($rows.ToArray())
@@ -1021,8 +1086,18 @@ function Measure-Height {
 }
 
 function Get-Remaining {
+  # Only today's work counts. Parking something for later must not make the
+  # number go up -- that would defeat the point of parking it.
   $n = 0
-  foreach ($i in @($script:List.items)) { if (-not $i.completed) { $n++ } }
+  foreach ($i in @($script:List.items)) {
+    if (-not $i.completed -and [string]$i.section -eq 'today') { $n++ }
+  }
+  return $n
+}
+
+function Get-TodayCount {
+  $n = 0
+  foreach ($i in @($script:List.items)) { if ([string]$i.section -eq 'today') { $n++ } }
   return $n
 }
 
@@ -1555,7 +1630,8 @@ $popup.add_Paint({
   $y += 8
   $items = @($script:List.items)
   $left = Get-Remaining
-  $done = $items.Count - $left
+  $todayCount = Get-TodayCount
+  $done = $todayCount - $left
   if ($script:ListUnreadable) {
     # Never draw a convincing empty list over a file we could not read.
     $bBad = New-Object System.Drawing.SolidBrush($C.Hot)
@@ -1571,7 +1647,7 @@ $popup.add_Paint({
     $countTxt = [string]$left
     [void]$g.DrawString($countTxt, $F.Count, $bCount, $PAD, ($y - 4))
     $cw = $g.MeasureString($countTxt, $F.Count).Width
-    $tail = if ($left -eq 0) { 'ALL CLEAR - ' + $done + ' DONE' } else { 'LEFT OF ' + $items.Count + ' - ' + $done + ' DONE' }
+    $tail = if ($left -eq 0) { 'ALL CLEAR - ' + $done + ' DONE' } else { 'LEFT OF ' + $todayCount + ' - ' + $done + ' DONE' }
     [void]$g.DrawString($tail, $F.Meta, $bFaint, ($PAD + $cw + 2), ($y + 6))
     $bCount.Dispose()
   }
@@ -1580,6 +1656,23 @@ $popup.add_Paint({
   [void](Measure-Rows $g)
   foreach ($r in $script:Rows) {
     $item = $r.item
+    # The group heading, drawn once above the first task of its section.
+    if ($r.header) {
+      $labelText = switch ($r.header) {
+        'tomorrow' { 'TOMORROW' }
+        'future'   { 'LATER' }
+        default    { 'TODAY' }
+      }
+      $hy = $r.y - $SECTION_H + 6
+      $bSec = New-Object System.Drawing.SolidBrush($C.Faint)
+      [void]$g.DrawString($labelText, $F.Meta, $bSec, $PAD, $hy)
+      $secW = $g.MeasureString($labelText, $F.Meta).Width
+      $secPen = New-Object System.Drawing.Pen($C.Border)
+      $lineY = $hy + 7
+      [void]$g.DrawLine($secPen, ($PAD + $secW + 8), $lineY, ($script:WinW - $PAD), $lineY)
+      $secPen.Dispose()
+      $bSec.Dispose()
+    }
     $hover = ($script:HoverId -eq $r.id)
     $editing = ($script:EditId -eq $r.id)
     $dragging = ($script:RowDragId -eq $r.id -and $script:RowDragArmed)
@@ -1663,16 +1756,32 @@ $popup.add_Paint({
   # Where a dragged row would land.
   if ($script:RowDragId -and ($script:DropBeforeId -or $script:DropAtEnd)) {
     $lineY = $null
+    $lineLeft = $PAD
     foreach ($r in $script:Rows) {
-      if ($r.id -eq $script:DropBeforeId) { $lineY = $r.y - 2; break }
+      if ($r.id -eq $script:DropBeforeId) {
+        $lineY = $r.y - 2
+        $lineLeft = Get-RowLeft $r
+        break
+      }
     }
-    if ($script:DropAtEnd -and @($script:Rows).Count -gt 0) {
-      $last = $script:Rows[@($script:Rows).Count - 1]
-      $lineY = $last.y + $last.h + 1
+    if ($null -eq $lineY -and $script:DropAfterId) {
+      foreach ($r in $script:Rows) {
+        if ($r.id -eq $script:DropAfterId) {
+          # After the last sibling means after its whole thread, or the line
+          # would appear above work that belongs to it.
+          $bottom = $r.y + $r.h
+          foreach ($k in $script:Rows) {
+            if ($k.y -gt $r.y -and $k.depth -gt $r.depth) { $bottom = $k.y + $k.h } elseif ($k.y -gt $r.y) { break }
+          }
+          $lineY = $bottom + 1
+          $lineLeft = Get-RowLeft $r
+          break
+        }
+      }
     }
     if ($null -ne $lineY) {
       $dropPen = New-Object System.Drawing.Pen($C.Brand, 2)
-      [void]$g.DrawLine($dropPen, $PAD, $lineY, ($script:WinW - $PAD), $lineY)
+      [void]$g.DrawLine($dropPen, $lineLeft, $lineY, ($script:WinW - $PAD), $lineY)
       $dropPen.Dispose()
     }
   }
@@ -1747,21 +1856,42 @@ function Test-InPlus([System.Drawing.Point]$pt, $row) {
 }
 
 function Get-DropTarget([System.Drawing.Point]$pt) {
-  # Which row the dragged one would land above. Past the last row means the end.
-  # Subtasks are skipped: only whole threads move, and only between threads.
+  # Which row the dragged one would land above. Past the last one means the end.
+  #
+  # A row reorders among ITS OWN SIBLINGS -- tasks among tasks, and a step among
+  # the steps of the same task. (Captain, 2026-07-29: "any sub thread needs to be
+  # able to be dragged and dropped within the sub thread as well.") Dragging a
+  # step out of its thread is a re-parent, which is a different gesture.
   $script:DropBeforeId = $null
   $script:DropAtEnd = $false
-  if (@($script:Rows).Count -eq 0) { return }
+  $script:DropAfterId = $null
+  if (@($script:Rows).Count -eq 0 -or -not $script:RowDragId) { return }
+
+  $dragged = $null
+  foreach ($r in $script:Rows) { if ($r.id -eq $script:RowDragId) { $dragged = $r; break } }
+  if ($null -eq $dragged) { return }
+  $parentId = $dragged.item.parentId
+
   $movingIds = @{}
-  if ($script:RowDragId) {
-    $movingIds[[string]$script:RowDragId] = $true
-    foreach ($kid in @(Get-Descendants $script:RowDragId)) { $movingIds[[string]$kid.id] = $true }
-  }
+  $movingIds[[string]$script:RowDragId] = $true
+  foreach ($kid in @(Get-Descendants $script:RowDragId)) { $movingIds[[string]$kid.id] = $true }
+
+  $siblings = New-Object System.Collections.ArrayList
   foreach ($r in $script:Rows) {
-    if ($r.depth -gt 0) { continue }
     if ($movingIds.ContainsKey([string]$r.id)) { continue }
+    # Same parent means same level of the same thread. $null -eq $null covers the
+    # top level without a special case.
+    if ([string]$r.item.parentId -ne [string]$parentId) { continue }
+    [void]$siblings.Add($r)
+  }
+  if ($siblings.Count -eq 0) { return }
+
+  foreach ($r in $siblings) {
     if ($pt.Y -lt ($r.y + [int]($r.h / 2))) { $script:DropBeforeId = $r.id; return }
   }
+  # Past the last sibling: land after it, which for a nested row is NOT the end
+  # of the whole list.
+  $script:DropAfterId = $siblings[$siblings.Count - 1].id
   $script:DropAtEnd = $true
 }
 
@@ -1945,6 +2075,7 @@ $popup.add_MouseUp({
     $script:RowDragArmed = $false
     $script:DropBeforeId = $null
     $script:DropAtEnd = $false
+    $script:DropAfterId = $null
     if ($armed) {
       if ($before -or $atEnd) { Move-Before $dragged $before }
       else { $popup.Invalidate() }
@@ -1955,7 +2086,17 @@ $popup.add_MouseUp({
   $row = Get-RowAt $pt
   # Right-click a row and you are editing it. No menu in between.
   if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
-    if ($null -ne $row) { Start-Edit $row.id }
+    if ($null -ne $row) {
+      if ([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Shift) {
+        # Shift+right-click moves it to the next group: today -> tomorrow ->
+        # later -> today.
+        $cur = [string]$row.item.section
+        $next = switch ($cur) { 'today' { 'tomorrow' } 'tomorrow' { 'future' } default { 'today' } }
+        Set-Section $row.id $next
+      } else {
+        Start-Edit $row.id
+      }
+    }
     return
   }
   if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
@@ -2156,6 +2297,11 @@ if ($script:ShotPath) {
           }
           # Ticking the task must tick the whole thread, at every level.
           Toggle-Priority $host2.id
+          # Park something for later so the groups are exercised and drawn.
+          Add-Priority 'Riah Money'
+          $later = $null
+          foreach ($i in @($script:List.items)) { if ($i.label -eq 'Riah Money') { $later = $i; break } }
+          if ($later) { Set-Section $later.id 'future' }
           # Drag it to the very top, thread and all.
           $top = @(Get-TopLevel)[0]
           if ($top -and $top.id -ne $host2.id) { Move-Before $host2.id $top.id }

@@ -74,7 +74,17 @@ const labels = list.items.map((item) => item.label);
 if (!labels.includes("Added by the note")) {
   fail(`the note's add never reached the file: ${JSON.stringify(labels)}`);
 }
-if (labels.length !== 8) fail(`expected 8 items after the exercise, got ${JSON.stringify(labels)}`);
+if (labels.length !== 9) fail(`expected 9 items after the exercise, got ${JSON.stringify(labels)}`);
+
+// Sections: something parked for later must come back in its own group, last.
+const parked = list.items.find((item) => item.label === "Riah Money");
+if (parked?.section !== "future") fail(`parking a task for later did not stick: ${JSON.stringify(parked)}`);
+if (list.items.at(-1)?.label !== "Riah Money") {
+  fail(`later work should sort after today's: ${JSON.stringify(labels)}`);
+}
+if (!list.items.filter((item) => item.label !== "Riah Money").every((item) => item.section === "today")) {
+  fail("everything else should still be for today.");
+}
 
 const ticked = list.items.find((item) => item.label === "Gumroad Shovels");
 if (!ticked?.completed) fail("the note's tick never reached the file.");

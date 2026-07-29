@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Riah To-Do">
+  <rect width="32" height="32" rx="7" fill="#0F0F11"/>
+  <rect x="0.6" y="0.6" width="30.8" height="30.8" rx="6.6" fill="none" stroke="#323236"/>
+  <rect x="7" y="8" width="4" height="4" rx="1" fill="#3FCF7F"/>
+  <rect x="14" y="9" width="11" height="2" rx="1" fill="#323236"/>
+  <rect x="7" y="14" width="4" height="4" rx="1" fill="#FF5CA8"/>
+  <rect x="14" y="15" width="11" height="2" rx="1" fill="#9A9AA2"/>
+  <rect x="7" y="20" width="4" height="4" rx="1" fill="#FF5CA8"/>
+  <rect x="14" y="21" width="8" height="2" rx="1" fill="#9A9AA2"/>
+</svg>

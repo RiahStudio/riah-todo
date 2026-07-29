@@ -157,14 +157,13 @@ test("removing a task takes its subtasks with it", () => {
   assert.deepEqual(ops.remove(parent.id).items.map((item) => item.label), ["Call the bank"]);
 });
 
-test("the twelve cap counts tasks, not subtasks", () => {
+test("the cap counts tasks, not rows, and sits far out of the way", () => {
   scratch();
   const first = ops.add("Task 1").items[0];
-  for (let i = 2; i <= 12; i += 1) ops.add(`Task ${i}`);
-  assert.throws(() => ops.add("Task 13"), /full at 12/);
+  for (let i = 2; i <= 40; i += 1) ops.add(`Task ${i}`);
   const withChild = ops.add("A step", { parentId: first.id });
-  assert.equal(topLevel(withChild).length, 12);
-  assert.equal(childrenOf(withChild, first.id).length, 1);
+  assert.equal(topLevel(withChild).length, 40, "forty tasks is fine");
+  assert.equal(childrenOf(withChild, first.id).length, 1, "and subtasks do not count against them");
 });
 
 test("dragging a task above another moves its subtasks with it", () => {
@@ -263,6 +262,20 @@ test("the vault trail is a dated markdown file, indented under its task", () => 
   assert.match(text, /^- \[x\] \d\d:\d\d Ship the launch$/m);
   assert.match(text, /^ {2}- \[x\] \d\d:\d\d Write the email$/m);
 
+  // A deep thread reads in the vault the way it reads on the note. Filing it
+  // flat would put a sixth-level step level with its task.
+  const deep = appendVaultTrail([
+    { id: "1", label: "Riah Money", completed: true, completedAt: "2026-07-28T09:05:00.000Z", parentId: null },
+    { id: "2", label: "Pricing", completed: true, completedAt: "2026-07-28T09:06:00.000Z", parentId: "1" },
+    { id: "3", label: "Ask the accountant", completed: true, completedAt: "2026-07-28T09:07:00.000Z", parentId: "2" },
+    { id: "4", label: "Book the call", completed: true, completedAt: "2026-07-28T09:08:00.000Z", parentId: "3" },
+  ], settings, at);
+  const nested = readFileSync(deep, "utf8");
+  assert.match(nested, /^- \[x\] \d\d:\d\d Riah Money$/m);
+  assert.match(nested, /^ {2}- \[x\] \d\d:\d\d Pricing$/m);
+  assert.match(nested, /^ {4}- \[x\] \d\d:\d\d Ask the accountant$/m);
+  assert.match(nested, /^ {6}- \[x\] \d\d:\d\d Book the call$/m);
+
   appendVaultTrail([
     { id: "x", label: "Call the bank", completed: true, completedAt: "2026-07-28T10:00:00.000Z", parentId: null },
   ], settings, at);
@@ -349,4 +362,45 @@ test("filing a finished thread files all of it, at any depth", () => {
   const removed = sweepCompleted(list, Date.now(), 2 * 60 * 60 * 1000);
   assert.deepEqual(removed.map((item) => item.id), ["a", "b", "c"]);
   assert.deepEqual(list.items.map((item) => item.id), ["d"]);
+});
+
+test("a step reorders among its own siblings without leaving the thread", () => {
+  scratch();
+  const top = ops.add("Ship the launch").items[0];
+  ops.add("Step A", { parentId: top.id });
+  ops.add("Step B", { parentId: top.id });
+  ops.add("Step C", { parentId: top.id });
+  let list = ops.add("Call the bank");
+
+  const byLabel = (l) => list.items.find((item) => item.label === l);
+  assert.deepEqual(list.items.map((i) => i.label),
+    ["Ship the launch", "Step A", "Step B", "Step C", "Call the bank"]);
+
+  // Drag C above A.
+  list = ops.moveBefore(byLabel("Step C").id, byLabel("Step A").id);
+  assert.deepEqual(list.items.map((i) => i.label),
+    ["Ship the launch", "Step C", "Step A", "Step B", "Call the bank"],
+    "the step moved within its thread, and the thread stayed put");
+  assert.ok(list.items.filter((i) => i.parentId === top.id).length === 3,
+    "all three are still steps of the same task");
+
+  // And to the end of its own siblings, not the end of the list.
+  list = ops.moveBefore(list.items.find((i) => i.label === "Step C").id, null);
+  assert.deepEqual(list.items.map((i) => i.label),
+    ["Ship the launch", "Step A", "Step B", "Step C", "Call the bank"],
+    "it lands last among its siblings, still inside the thread");
+});
+
+test("reordering a step carries its own sub-thread with it", () => {
+  scratch();
+  const top = ops.add("Ship the launch").items[0];
+  const a = ops.add("Step A", { parentId: top.id }).items[1];
+  ops.add("Under A", { parentId: a.id });
+  let list = ops.add("Step B", { parentId: top.id });
+
+  const bId = list.items.find((i) => i.label === "Step B").id;
+  list = ops.moveBefore(bId, a.id);
+  assert.deepEqual(list.items.map((i) => i.label),
+    ["Ship the launch", "Step B", "Step A", "Under A"],
+    "B moved above A, and A kept its own child underneath it");
 });

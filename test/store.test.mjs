@@ -73,12 +73,13 @@ test("the same wording is allowed twice — under different tasks it is differen
   assert.equal(after.filter((item) => !item.completed).length, 1, "the other untouched");
 });
 
-test("the list refuses blank text and a thirteenth task", () => {
+test("blank text is refused, and the cap is a backstop rather than a rule", () => {
   scratch();
   ops.add("One thing");
   assert.throws(() => ops.add("   "), /cannot be empty/);
-  for (let i = 2; i <= 12; i += 1) ops.add(`Item ${i}`);
-  assert.throws(() => ops.add("Thirteen"), /full at 12/);
+  // Well past any real day, and nowhere near the backstop.
+  for (let i = 2; i <= 30; i += 1) ops.add(`Item ${i}`);
+  assert.equal(topLevel(readPriorities()).length, 30);
 });
 
 test("yesterday's unfinished work carries over and gets today's date", () => {

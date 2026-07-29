@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   MAX_DEPTH, MAX_ITEMS, MAX_SUBTASKS, ops, readFiled, readPriorities, readPrioritiesForDisplay, readSettings,
+  SECTIONS, SECTION_LABELS,
   storePath, undoAvailable,
 } from "./lib/store.mjs";
 
@@ -130,6 +131,8 @@ async function handleApi(req, res, urlPath) {
       max: MAX_ITEMS,
       maxSubtasks: MAX_SUBTASKS,
       maxDepth: MAX_DEPTH,
+      sections: SECTIONS,
+      sectionLabels: SECTION_LABELS,
     });
     return;
   }
@@ -156,6 +159,9 @@ async function handleApi(req, res, urlPath) {
       return;
     case "/api/move":
       sendJson(res, 200, { ok: true, priorities: ops.moveBefore(body.id, body.beforeId ?? null) });
+      return;
+    case "/api/set-section":
+      sendJson(res, 200, { ok: true, priorities: ops.setSection(body.id, body.section) });
       return;
     case "/api/set-parent":
       sendJson(res, 200, { ok: true, priorities: ops.setParent(body.id, body.parentId ?? null) });

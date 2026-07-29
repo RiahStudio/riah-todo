@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "riah-todo",
   "version": "1.0.0",
   "description": "Today's list as a note by the Windows clock. Click the tray icon, tick things off, click away. One JSON file, no server required.",
@@ -18,7 +18,7 @@
   "scripts": {
     "start": "node server.mjs",
     "//test": "Listed explicitly on purpose. A glob needs either a shell that expands it (pwsh does not) or Node 22+ (the runner had 20), and CI was red on every run while it passed locally. Add new *.test.mjs files here.",
-    "test": "node --test test/store.test.mjs test/threads.test.mjs test/safety.test.mjs test/finished.test.mjs",
+    "test": "node --test test/store.test.mjs test/threads.test.mjs test/safety.test.mjs test/finished.test.mjs test/sections.test.mjs",
     "smoke:note": "node test/note-smoke.mjs",
     "smoke:guard": "node test/guard-smoke.mjs",
     "smoke:server": "node test/server-smoke.mjs",

@@ -55,7 +55,8 @@ the board page and the AI tools — the note itself needs neither.
 | Click the box | Ticks it off — or un-ticks it |
 | Click the words | Edits them, right there. Enter saves, Esc cancels |
 | Right-click a row | The same thing — straight into editing |
-| Drag a row up or down | Reorders it |
+| Shift + right-click a task | Moves it to Tomorrow, then Later, then back to Today |
+| Drag a row up or down | Reorders it among its own siblings — steps sort within their task |
 | Hover a row, click `+` | Starts a subtask under it — including under a subtask |
 | Type at the bottom, Enter | Adds an item |
 | Hover a row, click the `x` | Removes it |
@@ -83,8 +84,26 @@ finishes the one above, all the way up. Reopening something deep reopens the
 whole line above it. A task is never filed while any work under it is still open,
 and deleting a task takes its entire thread with it.
 
-Twelve top-level tasks, twelve children each, 120 characters a line. All
-deliberate: a list you can't read at a glance isn't a list of priorities.
+A hundred tasks, a hundred children each, 120 characters a line. Those numbers
+are backstops against a runaway paste, not advice — put as much on today as you
+actually want to.
+
+## Today, Tomorrow, Later
+
+Not everything worth remembering is worth doing now. A task belongs to one of
+three groups, and the note shows them in order with a heading each:
+
+- **Today** — the default. Nothing else appears until you use another group.
+- **Tomorrow**
+- **Later** — for the thing you must not forget but should not start.
+
+The count at the top only ever counts **today**, so parking something for later
+makes the number go down, not up. That is the point of parking it.
+
+On the note: **Shift + right-click** a task moves it to the next group. On the
+board: the small chip on each task (`TODAY` / `TOMORROW` / `LATER`) cycles it.
+A task takes its whole thread with it — a set of steps is never split across
+two days.
 
 ## Filing, and the trail it leaves
 
@@ -196,7 +215,7 @@ npm run smoke:note
 ```
 
 `npm test` covers the list rules: carry-over, the filing window, threading,
-cascading ticks, duplicates, the twelve cap, torn files, the vault trail.
+cascading ticks, duplicate wording, the caps, torn files, the vault trail.
 
 `smoke:note` starts the real tray twice. The first pass drives an add, a tick, two
 subtasks and a drag through the same code a click calls, then reads the file back

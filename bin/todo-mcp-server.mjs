@@ -1,12 +1,11 @@
 // Riah To-Do — the tools an agent uses to change today’s list.
 //
-// Same five tools Riah Code already exposed, but pointed at the shared file
-// instead of at a running Riah Code window. That is the difference that matters:
-// an agent can now set Captain's priorities when nothing but the tray note is
-// open, and the change shows up on the note within a second or two.
+// It writes the same file the note and the board use, so a change lands wherever
+// you are looking within a second or two — and it works whether or not anything
+// else is running.
 //
-// Register it (any MCP client):
-//   node "C:/Code/Claude Cowork/Riah To-Do/bin/todo-mcp-server.mjs"
+// Register it with any MCP client, from this folder:
+//   node bin/todo-mcp-server.mjs
 
 import { MAX_ITEMS, ops, readPriorities, storePath } from "../lib/store.mjs";
 
