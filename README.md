@@ -14,8 +14,9 @@ else has to be running — no server, no background service, no account.
 
 ## Download and install
 
-1. Grab the latest release ZIP from the
-   [releases page](https://github.com/RiahStudio/riah-todo/releases).
+1. Download it — either the latest ZIP from
+   [releases](https://github.com/RiahStudio/riah-todo/releases), or the green
+   **Code → Download ZIP** button at the top of this page.
 2. Extract it somewhere you'll keep it — `Documents\Riah To-Do` is fine.
 3. Double-click **`Start Riah To-Do.bat`**.
 
