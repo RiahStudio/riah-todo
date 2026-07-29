@@ -67,11 +67,24 @@ Prepared, **not applied** — setting them is Captain's call:
 
 ## v1.0.0
 
-- [ ] `npm run check` green on Windows
-- [ ] `npm audit --omit=dev` clean
-- [ ] Publish sweep: 0 blockers
-- [ ] Release tree rebuilt, pushed, and re-tested from a clean checkout
-- [ ] README download link points at a release that exists
-- [ ] Repository visibility flipped to public — **Captain only**
-- [ ] `node "_shared-agent-rules/bin/repo-map.mjs" write` after the flip
-- [ ] Tag `v1.0.0` and attach a ZIP of the release tree
+- [x] `npm run check` green on Windows
+- [x] `npm audit --omit=dev` clean
+- [x] Publish sweep: 0 blockers
+- [x] Release tree rebuilt, pushed, and re-tested from a clean checkout
+- [x] **GitHub Actions actually green.** It was red on every run for a week —
+      `node --test test/*.test.mjs` relies on shell globbing, and the runner uses
+      pwsh with Node 20. Test files are listed explicitly now.
+- [x] A bare download runs with nothing installed: tray and board both work with
+      no `node_modules`, on a first-run empty data folder.
+- [x] README shows the app as it actually looks, and offers **Code → Download
+      ZIP** so the instructions are true before any release exists.
+
+Still open, and all Captain's call:
+
+- [ ] Tag `v1.0.0` and attach a ZIP, so the releases link has something behind it
+- [ ] Repository topics (suggested list above) — not applied
+- [ ] Keep or trim the studio commentary in the source. Riah Usage ships public
+      with the same voice, so the recommendation is **keep** — it is honest
+      engineering history, and no path in it is secret.
+- [ ] Flip visibility to public — **Captain only**
+- [ ] `node "_shared-agent-rules/bin/repo-map.mjs" write` immediately after
