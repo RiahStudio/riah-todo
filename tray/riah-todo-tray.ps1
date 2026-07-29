@@ -641,14 +641,9 @@ function Sync-List([bool]$force = $false) {
   return $true
 }
 
-function Test-Duplicate([string]$label, [string]$exceptId) {
-  $l = $label.ToLowerInvariant()
-  foreach ($i in @($script:List.items)) {
-    if ($i.id -eq $exceptId) { continue }
-    if (([string]$i.label).ToLowerInvariant() -eq $l) { return $true }
-  }
-  return $false
-}
+# Duplicate labels are ALLOWED. The same job under two different tasks is two
+# different jobs. (Captain, 2026-07-29: "post on socials" under Gumroad Shovels
+# AND under Riah To-Do -- refusing that was obnoxious.)
 
 function Set-Flash([string]$msg) {
   $script:Flash = $msg
@@ -681,7 +676,6 @@ function Add-PriorityUnlocked([string]$label, [string]$parentId = $null) {
     Refresh-Note
     return
   }
-  if (Test-Duplicate $value $null) { Set-Flash 'Already on the list.'; Refresh-Note; return }
   $items = New-Object System.Collections.ArrayList
   foreach ($i in @($script:List.items)) { [void]$items.Add($i) }
   [void]$items.Add(@{ id = New-Id; label = $value; completed = $false; completedAt = $null; parentId = $parentId; depth = 0 })
@@ -695,7 +689,6 @@ function Rename-PriorityUnlocked([string]$id, [string]$label) {
   if (-not $value) { return }
   if ($value.Length -gt $script:MaxLabel) { $value = $value.Substring(0, $script:MaxLabel) }
   [void](Sync-List $true)
-  if (Test-Duplicate $value $id) { Set-Flash 'Already on the list.'; Refresh-Note; return }
   foreach ($i in @($script:List.items)) { if ($i.id -eq $id) { $i.label = $value } }
   [void](Write-Store $script:List)
   Refresh-Note
@@ -927,6 +920,8 @@ $script:FlashUntil = $script:LongAgo
 $script:PopupOpen = $false
 $script:ShownAt = $script:LongAgo
 $script:HoverClose = $false
+$script:HoverBack = $false
+$script:BackRect = $null
 $script:HiddenAt = $script:LongAgo
 $script:IconHandle = [IntPtr]::Zero
 $script:LastPlace = ''
@@ -946,6 +941,7 @@ $script:RowDragArmed = $false
 $script:RowDragFrom = $null
 $script:DropBeforeId = $null
 $script:DropAtEnd = $false
+$script:RowDragY = 0
 $script:HoverPlus = $false
 
 function Get-Indent([int]$depth) {
@@ -1273,7 +1269,12 @@ function Dismiss-Note {
   if ($script:EditId) { Stop-Edit $true }
   $script:PopupOpen = $false
   $script:HiddenAt = Get-Date
-  Reset-AddBox
+  # Deliberately NOT Reset-AddBox: closing the note to copy something and coming
+  # back must not dump you at the top level. (Captain, 2026-07-29: clicking out
+  # "automatically defaults you to starting one thread on the top level, which
+  # seems like it is going to annoy some people.") Clear only the typed text.
+  $addBox.Text = Get-AddHint
+  $addBox.ForeColor = $C.Faint
   try { $popup.Hide() } catch {}
 }
 
@@ -1361,6 +1362,13 @@ function Reset-AddBox {
   $addBox.ForeColor = $C.Faint
 }
 
+function Exit-Subtask {
+  # The way back out of a thread, without having to add something first.
+  Reset-AddBox
+  try { $popup.Activate(); $addBox.Focus() | Out-Null } catch {}
+  $popup.Invalidate()
+}
+
 function Start-Subtask([string]$parentId) {
   $script:SubtaskParentId = $parentId
   $addBox.Text = Get-AddHint
@@ -1372,8 +1380,17 @@ function Start-Subtask([string]$parentId) {
 function Layout-AddBox {
   try {
     $y = $popup.ClientSize.Height - $PAD - $FOOT_H - 6 - $ADD_H
-    $addBox.SetBounds(($PAD + 8), ($y + 8), ($script:WinW - (2 * $PAD) - 16), 18)
+    # While adding into a thread, leave room on the right for the way back out.
+    $backW = 0
+    if ($script:SubtaskParentId) { $backW = 26 }
+    $addBox.SetBounds(($PAD + 8), ($y + 8), ($script:WinW - (2 * $PAD) - 16 - $backW), 18)
     $script:AddRect = New-Object System.Drawing.Rectangle($PAD, $y, ($script:WinW - 2 * $PAD), $ADD_H)
+    if ($backW -gt 0) {
+      $script:BackRect = New-Object System.Drawing.Rectangle(
+        ($script:WinW - $PAD - $backW), ($y + 6), ($backW - 4), ($ADD_H - 12))
+    } else {
+      $script:BackRect = $null
+    }
   } catch {}
 }
 
@@ -1565,7 +1582,7 @@ $popup.add_Paint({
     $item = $r.item
     $hover = ($script:HoverId -eq $r.id)
     $editing = ($script:EditId -eq $r.id)
-    $dragging = ($script:RowDragId -eq $r.id)
+    $dragging = ($script:RowDragId -eq $r.id -and $script:RowDragArmed)
     $left = Get-RowLeft $r
     $textW = Get-TextWidth ([int]$r.depth)
     if ($textW -lt 60) { $textW = 60 }
@@ -1617,6 +1634,32 @@ $popup.add_Paint({
     }
   }
 
+  # The row you are holding, lifted and following the pointer. A drop line alone
+  # tells you where it will land but not that you are carrying anything.
+  # (Captain, 2026-07-29: "it would be nice if it kind of dragged with you".)
+  if ($script:RowDragId -and $script:RowDragArmed) {
+    $held = $null
+    foreach ($r in $script:Rows) { if ($r.id -eq $script:RowDragId) { $held = $r; break } }
+    if ($null -ne $held) {
+      $gy = $script:RowDragY - [int]($held.h / 2)
+      $gx = $PAD - 4
+      $gw = $script:WinW - (2 * $PAD) + 8
+      $ghostBg = New-Object System.Drawing.SolidBrush($C.Raised)
+      $g.FillRectangle($ghostBg, $gx, $gy, $gw, $held.h)
+      $ghostBg.Dispose()
+      $ghostPen = New-Object System.Drawing.Pen($C.Brand)
+      $g.DrawRectangle($ghostPen, $gx, $gy, ($gw - 1), ($held.h - 1))
+      $ghostPen.Dispose()
+      $gLeft = $gx + 8 + (Get-Indent ([int]$held.depth))
+      Draw-Check $g $gLeft ($gy + [int](($held.h - $CHECK) / 2)) ([bool]$held.item.completed) $false
+      $gFont = if ($held.item.completed) { $F.RowDone } else { $F.Row }
+      $gBox = New-Object System.Drawing.RectangleF(
+        ($gLeft + $CHECK + $CHECK_GAP), ($gy + 6),
+        ($gw - ($gLeft - $gx) - $CHECK - $CHECK_GAP - 10), ($held.h - 10))
+      [void]$g.DrawString([string]$held.item.label, $gFont, $bText, $gBox)
+    }
+  }
+
   # Where a dragged row would land.
   if ($script:RowDragId -and ($script:DropBeforeId -or $script:DropAtEnd)) {
     $lineY = $null
@@ -1643,9 +1686,16 @@ $popup.add_Paint({
     $addBg = New-Object System.Drawing.SolidBrush($C.Raised)
     $g.FillRectangle($addBg, $script:AddRect)
     $addBg.Dispose()
-    $addPen = New-Object System.Drawing.Pen($C.Border)
+    $addPen = New-Object System.Drawing.Pen($(if ($script:SubtaskParentId) { $C.Brand } else { $C.Border }))
     $g.DrawRectangle($addPen, $script:AddRect)
     $addPen.Dispose()
+  }
+  # The way back to the top level, always visible while inside a thread.
+  if ($script:BackRect) {
+    $backCol = if ($script:HoverBack) { $C.Hot } else { $C.Faint }
+    $bBack = New-Object System.Drawing.SolidBrush($backCol)
+    [void]$g.DrawString('x', $F.Kill, $bBack, ($script:BackRect.X + 3), ($script:BackRect.Y - 1))
+    $bBack.Dispose()
   }
 
   # No standing hint line: Captain asked for the explanation at the bottom to go.
@@ -1779,6 +1829,7 @@ $popup.add_MouseDown({
   # Anywhere that is not a row and not the add box is a handle: grab it and move
   # the note wherever you want it, the way the meters box moves.
   if ($script:AddRect -and $script:AddRect.Contains($pt)) { return }
+  if ($script:BackRect -and $script:BackRect.Contains($pt)) { return }
   $script:Dragging = $true
   $script:Moved = $false
   $script:DragStart = [System.Windows.Forms.Cursor]::Position
@@ -1832,6 +1883,7 @@ $popup.add_MouseMove({
       if ($script:EditId) { Stop-Edit $true }
     }
     Get-DropTarget $pt
+    $script:RowDragY = $pt.Y
     $popup.Cursor = [System.Windows.Forms.Cursors]::SizeNS
     $popup.Invalidate()
     return
@@ -1845,20 +1897,22 @@ $popup.add_MouseMove({
   $overKill = ($null -ne $row -and (Test-InKill $pt))
   $overPlus = (Test-InPlus $pt $row)
   $overClose = ($script:CloseRect -and $script:CloseRect.Contains($pt))
+  $overBack = ($script:BackRect -and $script:BackRect.Contains($pt))
   if ($id -ne $script:HoverId -or $overKill -ne $script:HoverKill -or
       $overClose -ne $script:HoverClose -or $inCheck -ne $script:HoverCheck -or
-      $overPlus -ne $script:HoverPlus) {
+      $overPlus -ne $script:HoverPlus -or $overBack -ne $script:HoverBack) {
     $script:HoverId = $id
     $script:HoverKill = $overKill
     $script:HoverClose = $overClose
     $script:HoverCheck = $inCheck
     $script:HoverPlus = $overPlus
+    $script:HoverBack = $overBack
     $popup.Invalidate()
   }
   # The cursor is the instruction now that the hint line is gone: a hand over the
   # box, the x and the +, a text caret over the words, arrows on the edges.
   $popup.Cursor = if ($edge) { Get-CursorForEdge $edge }
-    elseif ($overClose -or $overKill -or $inCheck -or $overPlus) { [System.Windows.Forms.Cursors]::Hand }
+    elseif ($overClose -or $overKill -or $inCheck -or $overPlus -or $overBack) { [System.Windows.Forms.Cursors]::Hand }
     elseif ($null -ne $row) { [System.Windows.Forms.Cursors]::IBeam }
     elseif ($script:AddRect -and $script:AddRect.Contains($pt)) { [System.Windows.Forms.Cursors]::IBeam }
     else { [System.Windows.Forms.Cursors]::SizeAll }
@@ -1906,6 +1960,7 @@ $popup.add_MouseUp({
   }
   if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
   if ($script:CloseRect -and $script:CloseRect.Contains($pt)) { Dismiss-Note; return }
+  if ($script:BackRect -and $script:BackRect.Contains($pt)) { Exit-Subtask; return }
   if ($null -eq $row) {
     if ($script:EditId) { Stop-Edit $true }
     return

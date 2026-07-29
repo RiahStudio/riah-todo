@@ -53,10 +53,29 @@ test("adding, ticking, renaming, and removing all survive a round trip", () => {
   assert.equal(removed.items.length, 1);
 });
 
-test("the list refuses duplicates, blank text, and a thirteenth item", () => {
+test("the same wording is allowed twice — under different tasks it is different work", () => {
+  scratch();
+  // Captain, 2026-07-29: "post on socials" under Gumroad Shovels AND under
+  // Riah To-Do. Refusing the second was obnoxious, so this used to throw.
+  const a = ops.add("Ship the launch").items[0];
+  const b = ops.add("Riah To-Do").items[1];
+  ops.add("Post on socials", { parentId: a.id });
+  const both = ops.add("post on SOCIALS", { parentId: b.id });
+
+  const posts = both.items.filter((item) => item.label.toLowerCase() === "post on socials");
+  assert.equal(posts.length, 2, "both survived");
+  assert.notEqual(posts[0].parentId, posts[1].parentId, "under different tasks");
+  // Ticking one by name acts on a single item — the other stays open. (Its own
+  // parent completing is the thread cascade doing its job, not a mix-up.)
+  const ticked = ops.setCompleted("Post on socials", true);
+  const after = ticked.items.filter((item) => item.label.toLowerCase() === "post on socials");
+  assert.equal(after.filter((item) => item.completed).length, 1, "one ticked");
+  assert.equal(after.filter((item) => !item.completed).length, 1, "the other untouched");
+});
+
+test("the list refuses blank text and a thirteenth task", () => {
   scratch();
   ops.add("One thing");
-  assert.throws(() => ops.add("one THING"), /already on today's list/);
   assert.throws(() => ops.add("   "), /cannot be empty/);
   for (let i = 2; i <= 12; i += 1) ops.add(`Item ${i}`);
   assert.throws(() => ops.add("Thirteen"), /full at 12/);
