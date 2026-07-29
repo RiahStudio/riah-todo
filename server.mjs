@@ -10,8 +10,8 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  MAX_ITEMS, MAX_SUBTASKS, ops, readPriorities, readPrioritiesForDisplay, readSettings, storePath,
-  undoAvailable,
+  MAX_ITEMS, MAX_SUBTASKS, ops, readFiled, readPriorities, readPrioritiesForDisplay, readSettings,
+  storePath, undoAvailable,
 } from "./lib/store.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +130,10 @@ async function handleApi(req, res, urlPath) {
       max: MAX_ITEMS,
       maxSubtasks: MAX_SUBTASKS,
     });
+    return;
+  }
+  if (req.method === "GET" && urlPath === "/api/filed") {
+    sendJson(res, 200, { ok: true, filed: readFiled() });
     return;
   }
   if (req.method !== "POST") {

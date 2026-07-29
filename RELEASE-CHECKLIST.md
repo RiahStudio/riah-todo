@@ -45,6 +45,16 @@ Rebuild the release tree from the workshop rather than editing it:
 node "Riah Build Playbook/bin/New-PublicRelease.ps1" -Project "Riah To-Do" -RepoName riah-todo -Confirm
 ```
 
+**Two things that bite every time:**
+
+1. The tool **overwrites `.gitignore`** with the generic hardened set, dropping
+   the project patterns. Re-append them after every rebuild — `today.json`,
+   `today-filed.json`, `settings.json`, `undo.json`, `*.lock`, `*.tmp`,
+   `_REJECTED_/` — *alongside* the credential/profile patterns, never instead.
+2. The tool **exits non-zero on a harmless git line-ending warning**, which stops
+   the rest of your command. Run the copy-into-the-mirror step separately, and
+   check the mirror actually changed before committing.
+
 Then check the published commit out clean, `npm ci`, and run `npm run check`
 there. Ship what you tested, not what you meant to test.
 

@@ -60,7 +60,7 @@ the board page and the AI tools — the note itself needs neither.
 | Hover a row, click the `x` | Removes it |
 | Drag the note | Moves it. Drag an edge or corner to resize |
 | Click anywhere else | Closes it (Esc and the `x` too) |
-| Right-click the tray icon | The list, the board, settings, file the finished ones, quit |
+| Right-click the tray icon | The list, the board, what you've finished, settings, file the finished ones, quit |
 
 Hovering the icon does **nothing**. It is click-to-open on purpose.
 
@@ -91,8 +91,9 @@ left, not a monument to what's done. Unfinished items carry over to tomorrow.
 
 Right-click the tray icon → **Settings** to change that:
 
-- **File ticked items after** — straight away, 15 minutes, up to 8 hours, or
-  never (clear them yourself from the tray menu).
+- **File ticked items after** — straight away, 15 or 30 minutes, 1 / 2 / 4 / 8 /
+  12 hours, a day, 3 days, a week, or never (clear them yourself from the tray
+  menu).
 - **Also write them into a vault** — point it at an Obsidian vault, or any
   folder. Each filing appends to one dated markdown file, with steps indented
   under their task:
@@ -105,6 +106,13 @@ Right-click the tray icon → **Settings** to change that:
   ```
 
   Leave it blank and no trail is written. The JSON archive happens either way.
+
+### Seeing what you finished
+
+Right-click the tray icon → **What I've finished**, or scroll to **Finished** on
+the board. It shows the last two weeks of ticked-off work, newest day first, with
+the time each thing was done and subtasks under their task. Nothing is deleted —
+this is the same `today-filed.json` the filing writes to.
 
 ## Accessibility
 

@@ -1843,6 +1843,8 @@ $miBoard = $menu.Items.Add('Open the board')
 $miBoard.add_Click({ Open-Board })
 # Settings live on the board, where there is room for real controls -- the note
 # stays a note.
+$miFinished = $menu.Items.Add("What I've finished")
+$miFinished.add_Click({ Open-Board '#finished' })
 $miSettings = $menu.Items.Add('Settings')
 $miSettings.add_Click({ Open-Board '#settings' })
 $miClear = $menu.Items.Add('File the finished ones now')

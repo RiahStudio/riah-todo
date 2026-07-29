@@ -307,6 +307,43 @@
     border: 0;
   }
 
+  .finished {
+    margin-top: 34px;
+    padding: 20px;
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+  .finished h2 { font: 600 1rem/1 var(--font-ui); }
+  .finished-body { padding-top: 6px; }
+  .empty-finished { padding-top: 12px; color: var(--dim); font: 400 0.88rem/1.5 var(--font-ui); }
+  .finished-day { padding-top: 16px; }
+  .finished-day > h3 {
+    color: var(--dim);
+    font: 700 0.68rem/1.2 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 6px;
+  }
+  .finished-day ul { list-style: none; }
+  .finished-day li {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--body);
+    font: 400 0.9rem/1.4 var(--font-ui);
+  }
+  .finished-day li:last-child { border-bottom: 0; }
+  .finished-day li.sub { padding-left: 22px; }
+  .finished-day time {
+    flex: none;
+    color: var(--dim);
+    font: 400 0.72rem/1.6 var(--font-mono);
+  }
+  .finished-day .did { color: var(--keep); }
+
   .settings {
     margin-top: 34px;
     padding: 20px;
@@ -397,6 +434,16 @@
   </div>
   <div id="live" class="sr-only" role="status" aria-live="polite"></div>
 
+  <section class="finished" id="finished">
+    <div class="settings-head">
+      <h2>Finished</h2>
+      <span class="riah-label" id="finishedCount"></span>
+    </div>
+    <div id="finishedBody" class="finished-body">
+      <p class="empty-finished">Nothing filed yet. Ticked work lands here.</p>
+    </div>
+  </section>
+
   <section class="settings" id="settings">
     <div class="settings-head">
       <h2>Settings</h2>
@@ -413,9 +460,13 @@
         <option value="120">2 hours</option>
         <option value="240">4 hours</option>
         <option value="480">8 hours</option>
+        <option value="720">12 hours</option>
+        <option value="1440">A day</option>
+        <option value="4320">3 days</option>
+        <option value="10080">A week</option>
         <option value="never">Never — I'll clear them myself</option>
       </select>
-      <small>Filed items leave the list and land in <code>today-filed.json</code>. Nothing is deleted.</small>
+      <small>Filed items leave the list and go to <strong>Finished</strong> below. Nothing is deleted.</small>
     </label>
 
     <label class="field">
@@ -696,6 +747,72 @@
     });
   }
 
+  // --- what's been finished ---
+  const finishedBody = document.getElementById("finishedBody");
+  const finishedCount = document.getElementById("finishedCount");
+
+  function dayLabel(day) {
+    if (day === "earlier") return "Earlier";
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (day === localDay(today)) return "Today";
+    if (day === localDay(yesterday)) return "Yesterday";
+    return new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" })
+      .format(new Date(`${day}T12:00:00`));
+  }
+
+  function localDay(date) {
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${m}-${d}`;
+  }
+
+  async function loadFinished() {
+    let filed;
+    try {
+      filed = (await (await fetch("/api/filed")).json()).filed;
+    } catch {
+      return; // the desk went away; leave what is on screen
+    }
+    finishedCount.textContent = filed.total === 0
+      ? ""
+      : `${filed.total} ticked off`;
+    if (filed.days.length === 0) {
+      finishedBody.replaceChildren(Object.assign(document.createElement("p"), {
+        className: "empty-finished",
+        textContent: "Nothing filed yet. Ticked work lands here.",
+      }));
+      return;
+    }
+    const parents = new Set(filed.days.flatMap((d) => d.items.map((i) => i.id)));
+    finishedBody.replaceChildren(...filed.days.map((day) => {
+      const section = document.createElement("div");
+      section.className = "finished-day";
+      const heading = document.createElement("h3");
+      heading.textContent = `${dayLabel(day.day)} — ${day.items.length}`;
+      const list = document.createElement("ul");
+      list.append(...day.items.map((item) => {
+        const row = document.createElement("li");
+        if (item.parentId && parents.has(item.parentId)) row.classList.add("sub");
+        const tick = document.createElement("span");
+        tick.className = "did";
+        tick.textContent = "✓";
+        const when = document.createElement("time");
+        const at = item.completedAt ? new Date(item.completedAt) : null;
+        when.textContent = at && !Number.isNaN(at.getTime())
+          ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(at)
+          : "";
+        const label = document.createElement("span");
+        label.textContent = item.label;
+        row.append(tick, when, label);
+        return row;
+      }));
+      section.append(heading, list);
+      return section;
+    }));
+  }
+
   /** Alt+Up / Alt+Down: the keyboard's version of dragging a task. */
   async function moveByKeyboard(item, direction) {
     const tasks = state.items.filter((entry) => !entry.parentId);
@@ -775,7 +892,10 @@
   }
 
   run("/api/list");
+  loadFinished();
   setInterval(poll, 2000);
+  // The archive only changes when something is filed — no need to poll it hard.
+  setInterval(loadFinished, 15000);
 </script>
 </body>
 </html>
