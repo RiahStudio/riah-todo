@@ -49,6 +49,27 @@ const output = runTray({ RIAH_TODO_TRAY_SHOT: shot, RIAH_TODO_TRAY_EXERCISE: "1"
 if (!output.includes("TRAY_NOTE_OK")) fail(`the note never drew itself: ${output || "(no output)"}`);
 if (!existsSync(shot)) fail(`no picture of the note was saved at ${shot}`);
 
+// --- a long list in a short note ---
+// The note grows with the list until you give it a height of your own; past
+// that the rows scroll. Nothing here is visible to a unit test, so the tray
+// reports what it measured with 24 extra tasks and a height of 320.
+// Read the SCROLL line and nothing else. Scanning the whole output picked up a
+// later, unrelated `height=` and reported a failure the tray had not had.
+const scrollLine = output.split(/\r?\n/).find((line) => line.startsWith("SCROLL "));
+if (!scrollLine) fail(`the note never reported its scrolling: ${output}`);
+const scroll = Object.fromEntries(
+  [...scrollLine.matchAll(/(\w+)=(-?\d+)/g)].map(([, key, value]) => [key, Number(value)]),
+);
+if (scroll.height > 340) {
+  fail(`the note grew past the height it was given (${scroll.height} > 320+slack): a long list should scroll, not stretch.`);
+}
+if (!(scroll.max > 0)) fail("24 extra tasks in a 320px note did not produce anything to scroll.");
+if (scroll.resttop < scroll.viewtop) {
+  fail(`the first row starts above the row area (${scroll.resttop} < ${scroll.viewtop}) — that is the top item clipping.`);
+}
+if (!(scroll.scrolledtop < scroll.resttop)) fail("scrolling down did not move the rows up.");
+if (scroll.at !== 200) fail(`the scroll position did not take: ${scroll.at}`);
+
 /**
  * A file existing proved nothing: PrintWindow can return success and write an
  * all-black PNG, which is exactly what happened three times out of four on

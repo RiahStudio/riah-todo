@@ -965,6 +965,17 @@ $GRIP = 6
 $CORNER = 14
 
 $script:Rows = @()
+# Scrolling. The note grows as the list grows, but a long list eventually meets
+# the edge of the screen -- and a note you cannot shrink is worse than a short
+# one. Past that point the rows scroll inside whatever height Captain chose.
+$script:ScrollY = 0
+$script:ContentBottom = 0
+$script:ViewTop = 0
+$script:ViewBottom = 0
+$script:BarRect = $null
+$script:BarThumb = $null
+$script:BarDragOffset = 0
+$script:BarDragging = $false
 $script:HoverId = $null
 $script:HoverKill = $false
 $script:HoverCheck = $false
@@ -983,6 +994,7 @@ $script:LastPlace = ''
 $script:WinW = $DEF_W
 $script:UserPos = $null
 $script:UserMinH = 0
+$script:UserHSet = $false
 $script:Dragging = $false
 $script:Resizing = $false
 $script:ResizeEdge = ''
@@ -1049,7 +1061,18 @@ function Measure-Rows($g) {
   # Rows wrap to the note's width, so a real sentence stays readable instead of
   # being cut off with dots. Heights are measured once and reused for hit-testing.
   $rows = New-Object System.Collections.ArrayList
-  $y = $PAD + (Get-HeadHeight $g) + $TALLY_H
+  $top = $PAD + (Get-HeadHeight $g) + $TALLY_H
+  # The strip the rows live in: below the tally, above the add box.
+  $script:ViewTop = $top
+  $script:ViewBottom = $popup.ClientSize.Height - $PAD - $FOOT_H - 6 - $ADD_H - 4
+  if ($script:ViewBottom -lt ($top + 20)) { $script:ViewBottom = $top + 20 }
+  # Clamp against the previous frame's measurements. One frame of lag is
+  # invisible and it saves laying every row out twice.
+  $maxScroll = $script:ContentBottom - $script:ViewBottom
+  if ($maxScroll -lt 0) { $maxScroll = 0 }
+  if ($script:ScrollY -gt $maxScroll) { $script:ScrollY = $maxScroll }
+  if ($script:ScrollY -lt 0) { $script:ScrollY = 0 }
+  $y = $top
   $seenSection = @{}
   foreach ($i in @($script:List.items)) {
     $depth = 0
@@ -1074,10 +1097,15 @@ function Measure-Rows($g) {
       $needed = [int][Math]::Ceiling($size.Height) + 12
       if ($needed -gt $h) { $h = $needed }
     } catch {}
-    [void]$rows.Add(@{ id = $i.id; item = $i; y = $y; h = $h; depth = $depth; child = ($depth -gt 0); header = $header })
+    # Rows carry their ON-SCREEN y, so drawing, hit-testing and dragging all
+    # agree about where a row is without any of them knowing about scrolling.
+    [void]$rows.Add(@{ id = $i.id; item = $i; y = ($y - $script:ScrollY); h = $h; depth = $depth; child = ($depth -gt 0); header = $header })
     $y += $h + $ROW_GAP_Y
   }
   $script:Rows = @($rows.ToArray())
+  $script:ContentBottom = $y
+  # The window is sized from the UNSCROLLED height, or scrolling down would
+  # shrink the note out from under itself.
   return $y
 }
 
@@ -1221,6 +1249,8 @@ function Load-Geometry {
       if ($w -ge $MIN_W -and $w -le $MAX_W) { $script:WinW = $w }
     }
     if ($null -ne $j.h) { $script:UserMinH = [Math]::Max(0, [int]$j.h) }
+    # Only a deliberate drag of a top or bottom edge counts as choosing a height.
+    if ($null -ne $j.hSet) { $script:UserHSet = [bool]$j.hSet }
     if ($null -eq $j.x -or $null -eq $j.y) { return }
     $script:UserPos = New-Object System.Drawing.Point([int]$j.x, [int]$j.y)
     Write-TrayLog ('geometry_loaded ' + $j.x + ',' + $j.y + ' ' + $script:WinW + 'x' + $script:UserMinH)
@@ -1231,7 +1261,8 @@ function Save-Geometry {
   try {
     $dir = Split-Path -Parent $script:PosPath
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    $o = @{ x = [int]$popup.Left; y = [int]$popup.Top; w = [int]$popup.Width; h = [int]$popup.Height }
+    $o = @{ x = [int]$popup.Left; y = [int]$popup.Top; w = [int]$popup.Width
+            h = [int]$popup.Height; hSet = [bool]$script:UserHSet }
     ($o | ConvertTo-Json -Compress) | Set-Content -Path $script:PosPath -Encoding ASCII
     $script:UserPos = New-Object System.Drawing.Point($popup.Left, $popup.Top)
     $script:WinW = $popup.Width
@@ -1271,10 +1302,17 @@ function Place-Popup {
   }
   $wa = $scr.WorkingArea
 
-  # A height he dragged is a floor, not a cap: the note still grows if the list
-  # needs the room, so nothing is ever hidden behind an edge.
-  $wanted = [Math]::Max($contentH, $script:UserMinH)
-  $winH = [Math]::Min([Math]::Max($wanted, 160), [int]($wa.Height * 0.95))
+  # Until Captain drags an edge, the note grows with the list -- that part he
+  # likes. Once he has set a height, that IS the height and the list scrolls
+  # inside it. It used to be treated as a floor, which meant a long list could
+  # not be pulled back down to something small. (Captain, 2026-07-29: "I should
+  # just be able to make it smaller anytime I want because I'm going to get a
+  # lot of things on there.")
+  if ($script:UserHSet -and $script:UserMinH -gt 0) {
+    $winH = [Math]::Min([Math]::Max($script:UserMinH, 140), $wa.Height)
+  } else {
+    $winH = [Math]::Min([Math]::Max($contentH, 160), [int]($wa.Height * 0.95))
+  }
   if ($src -eq 'saved') {
     $x = $script:UserPos.X
     $y = $script:UserPos.Y
@@ -1323,7 +1361,11 @@ function Refresh-Note {
       $want = Place-Popup
       Force-PopupOnScreen $want[0] $want[1] $want[2] $want[3]
       $popup.Invalidate()
-    } catch {}
+    } catch {
+      # Swallowing this silently once cost an afternoon: the note kept its old
+      # size and nothing anywhere said why.
+      Write-TrayLog ('refresh_place_fail ' + $_.Exception.Message)
+    }
   }
 }
 
@@ -1681,6 +1723,11 @@ $popup.add_Paint({
 
   # Rows
   [void](Measure-Rows $g)
+  # Everything from here to the scrollbar is clipped to the row strip, so a
+  # scrolled row cannot paint over the header or the add box.
+  $oldClip = $g.Clip
+  $g.SetClip((New-Object System.Drawing.Rectangle(
+    1, $script:ViewTop, ($popup.ClientSize.Width - 2), ($script:ViewBottom - $script:ViewTop))))
   foreach ($r in $script:Rows) {
     $item = $r.item
     # The group heading, drawn once above the first task of its section.
@@ -1813,6 +1860,30 @@ $popup.add_Paint({
     }
   }
 
+  $g.Clip = $oldClip
+  $oldClip.Dispose()
+
+  # The scrollbar, drawn only when there is more list than room. Thin, on the
+  # right edge of the row strip, and draggable.
+  $script:BarRect = $null
+  $script:BarThumb = $null
+  $maxScroll = Get-MaxScroll
+  if ($maxScroll -gt 0) {
+    $viewH = $script:ViewBottom - $script:ViewTop
+    $barX = $script:WinW - $PAD + 4
+    $script:BarRect = New-Object System.Drawing.Rectangle($barX, $script:ViewTop, 5, $viewH)
+    $bTrack = New-Object System.Drawing.SolidBrush($C.Raised)
+    $g.FillRectangle($bTrack, $script:BarRect)
+    $bTrack.Dispose()
+    $thumbH = [int]([Math]::Max(28, $viewH * $viewH / $script:ContentBottom))
+    if ($thumbH -gt $viewH) { $thumbH = $viewH }
+    $thumbY = $script:ViewTop + [int](($viewH - $thumbH) * $script:ScrollY / $maxScroll)
+    $script:BarThumb = New-Object System.Drawing.Rectangle($barX, $thumbY, 5, $thumbH)
+    $bThumb = New-Object System.Drawing.SolidBrush($C.Border)
+    $g.FillRectangle($bThumb, $script:BarThumb)
+    $bThumb.Dispose()
+  }
+
   # Empty means empty. The box below already says "Add a priority"; saying it
   # twice in a fuller sentence was overexplaining. (Captain, 2026-07-29.)
 
@@ -1858,10 +1929,39 @@ $popup.add_Paint({
 })
 
 function Get-RowAt([System.Drawing.Point]$client) {
+  # A row scrolled under the header or below the add box is not there to click,
+  # however much of it the maths says overlaps the pointer.
+  if ($client.Y -lt $script:ViewTop -or $client.Y -ge $script:ViewBottom) { return $null }
   foreach ($r in $script:Rows) {
     if ($client.Y -ge $r.y -and $client.Y -lt ($r.y + $r.h)) { return $r }
   }
   return $null
+}
+
+function Move-ScrollThumb([int]$y) {
+  if ($null -eq $script:BarRect -or $null -eq $script:BarThumb) { return }
+  $travel = $script:BarRect.Height - $script:BarThumb.Height
+  if ($travel -le 0) { return }
+  $rel = $y - $script:BarDragOffset - $script:BarRect.Y
+  Set-Scroll ([int]((Get-MaxScroll) * $rel / $travel))
+}
+
+function Get-MaxScroll {
+  $max = $script:ContentBottom - $script:ViewBottom
+  if ($max -lt 0) { return 0 }
+  return $max
+}
+
+function Set-Scroll([int]$value) {
+  $max = Get-MaxScroll
+  $next = $value
+  if ($next -gt $max) { $next = $max }
+  if ($next -lt 0) { $next = 0 }
+  if ($next -eq $script:ScrollY) { return }
+  $script:ScrollY = $next
+  # An edit box floats above a row; scrolling would leave it stranded.
+  if ($script:EditId) { Stop-Edit $true }
+  $popup.Invalidate()
 }
 
 function Test-InCheck([System.Drawing.Point]$pt, $row) {
@@ -1967,10 +2067,30 @@ $popup.add_MouseDown({
   if ($edge) {
     $script:Resizing = $true
     $script:ResizeEdge = $edge
+    # Grabbing a top or bottom edge is choosing a height. From here on the note
+    # keeps it instead of growing back to fit the list.
+    if ($edge -match 'n|s') { $script:UserHSet = $true }
     $script:DragStart = [System.Windows.Forms.Cursor]::Position
     $script:DragOrigin = New-Object System.Drawing.Rectangle(
       $popup.Left, $popup.Top, $popup.Width, $popup.Height)
     return
+  }
+  # The scrollbar takes the click before any row does.
+  if ($null -ne $script:BarRect) {
+    $barHit = New-Object System.Drawing.Rectangle(
+      ($script:BarRect.X - 7), $script:BarRect.Y, ($script:BarRect.Width + 10), $script:BarRect.Height)
+    if ($barHit.Contains($pt)) {
+      if ($null -ne $script:BarThumb -and $pt.Y -ge $script:BarThumb.Y `
+          -and $pt.Y -lt ($script:BarThumb.Y + $script:BarThumb.Height)) {
+        # Grab it where you took hold of it, so the thumb does not jump.
+        $script:BarDragOffset = $pt.Y - $script:BarThumb.Y
+      } else {
+        $script:BarDragOffset = [int]($script:BarThumb.Height / 2)
+      }
+      $script:BarDragging = $true
+      Move-ScrollThumb $pt.Y
+      return
+    }
   }
   $row = Get-RowAt $pt
   if ($null -ne $row) {
@@ -2018,6 +2138,8 @@ $popup.add_MouseMove({
     $popup.Invalidate()
     return
   }
+
+  if ($script:BarDragging) { Move-ScrollThumb $pt.Y; return }
 
   if ($script:Dragging) {
     $cur = [System.Windows.Forms.Cursor]::Position
@@ -2086,6 +2208,8 @@ $popup.add_MouseUp({
     Refresh-Note
     return
   }
+  if ($script:BarDragging) { $script:BarDragging = $false; return }
+
   if ($script:Dragging) {
     $wasMove = $script:Moved
     $script:Dragging = $false
@@ -2156,6 +2280,17 @@ $popup.add_MouseLeave({
   $script:HoverCheck = $false
   $popup.Invalidate()
 })
+
+# The wheel scrolls the list. It is attached to the boxes as well as the form
+# because WinForms sends the wheel to whatever has focus, and the add box almost
+# always does -- on the form alone it would only work after clicking a row.
+$script:OnWheel = {
+  param($s, $e)
+  Set-Scroll ($script:ScrollY - ([int]($e.Delta / 120) * 48))
+}
+$popup.add_MouseWheel($script:OnWheel)
+$addBox.add_MouseWheel($script:OnWheel)
+$editBox.add_MouseWheel($script:OnWheel)
 
 # Clicking anywhere outside the note closes it. That is the whole dismiss model:
 # no hover, no timers, no leave-grace -- the note is up or it is not.
@@ -2377,6 +2512,39 @@ if ($script:ShotPath) {
             $script:DropAfterId = $null
           }
         }
+
+        # Scrolling. A list longer than the note must scroll inside it, the note
+        # must keep the height Captain chose, and the top row must never be cut
+        # off. (Captain, 2026-07-29: "The very top item clips when we hit
+        # maximum ... I should just be able to make it smaller anytime I want.")
+        $fillers = New-Object System.Collections.ArrayList
+        for ($n = 1; $n -le 24; $n++) {
+          $fillLabel = 'Filler ' + $n
+          Add-Priority $fillLabel
+          foreach ($i in @($script:List.items)) { if ($i.label -eq $fillLabel) { [void]$fillers.Add($i.id); break } }
+        }
+        $script:UserHSet = $true
+        $script:UserMinH = 320
+        Refresh-Note
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 200
+        $gs = $null
+        try { $gs = $popup.CreateGraphics(); [void](Measure-Rows $gs) } catch {} finally { if ($gs) { $gs.Dispose() } }
+        $restTop = @($script:Rows)[0].y
+        $roomFor = Get-MaxScroll
+        Set-Scroll 200
+        try { $gs = $popup.CreateGraphics(); [void](Measure-Rows $gs) } catch {} finally { if ($gs) { $gs.Dispose() } }
+        $scrolledTop = @($script:Rows)[0].y
+        $diag = 'SCROLL height=' + $popup.Height + ' max=' + $roomFor + ' resttop=' + $restTop +
+          ' viewtop=' + $script:ViewTop + ' scrolledtop=' + $scrolledTop + ' at=' + $script:ScrollY
+        Write-Host $diag
+        Write-TrayLog ($diag + ' shown=' + (Test-PopupShown) + ' visible=' + $popup.Visible +
+          ' hset=' + $script:UserHSet + ' minh=' + $script:UserMinH)
+        Set-Scroll 0
+        foreach ($fid in $fillers) { Remove-Priority $fid }
+        $script:UserHSet = $false
+        $script:UserMinH = 0
+
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 250
       }

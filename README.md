@@ -57,6 +57,8 @@ the board page and the AI tools — the note itself needs neither.
 | Right-click a row | The same thing — straight into editing |
 | Shift + right-click a task | Moves it to Tomorrow, then Later, then back to Today |
 | Drag a row up or down | Reorders it among its own siblings — steps sort within their task |
+| Scroll wheel | Scrolls the list when there is more of it than note |
+| Drag the top or bottom edge | Sets the height. From then on it keeps it |
 | Hover a row, click `+` | Starts a subtask under it — including under a subtask |
 | Type at the bottom, Enter | Adds an item |
 | Hover a row, click the `x` | Removes it |
@@ -87,6 +89,15 @@ and deleting a task takes its entire thread with it.
 A hundred tasks, a hundred children each, 120 characters a line. Those numbers
 are backstops against a runaway paste, not advice — put as much on today as you
 actually want to.
+
+## How big it gets
+
+Left alone, the note grows as you add to it, so a short list is a short note.
+
+Drag its top or bottom edge and that becomes **the** height: it stops growing
+and the list scrolls inside it instead, with a slim bar on the right. That way a
+hundred tasks can live in a note the size of a postcard. Drag an edge again any
+time to change your mind.
 
 ## Today, Tomorrow, Later
 
