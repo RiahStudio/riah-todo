@@ -24,6 +24,14 @@ $script:DpiAware = $false
 $script:Root    = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $script:LogPath = Join-Path $script:Root 'scratch\tray.log'
 
+# The note is a script, not an installed program, so updating it means editing
+# this file. A copy already running would keep the old behaviour for as long as
+# it stays up -- which makes a real fix look like it did not work. Remember what
+# we loaded, and pick up a newer one while nothing is open.
+$script:ScriptStamp  = $null
+$script:PendingStamp = $null
+try { $script:ScriptStamp = (Get-Item $PSCommandPath).LastWriteTimeUtc.Ticks } catch {}
+
 function Write-TrayLog([string]$msg) {
   try {
     $dir = Split-Path -Parent $script:LogPath
@@ -46,7 +54,9 @@ if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 $script:ShotPath = $env:RIAH_TODO_TRAY_SHOT
 if (-not $script:ShotPath) {
   $created = $false
-  $mutex = New-Object System.Threading.Mutex($true, 'RiahTodoTray', [ref]$created)
+  # Script-scoped: a reload has to let go of this before its replacement starts,
+  # or the replacement sees the name taken and exits immediately.
+  $script:Mutex = New-Object System.Threading.Mutex($true, 'RiahTodoTray', [ref]$created)
   if (-not $created) {
     Write-TrayLog 'exit_duplicate_instance'
     exit 0
@@ -1390,6 +1400,23 @@ function Quit-Tray {
   [System.Windows.Forms.Application]::Exit()
 }
 
+function Restart-ForUpdate {
+  # Swap this copy for the newer one on disk. Only ever called with the note
+  # closed and nothing in the middle of a gesture, so there is nothing to lose:
+  # the list itself lives in the file, not in here.
+  Write-TrayLog 'restart_for_update'
+  try { $fileTimer.Stop(); $awayTimer.Stop() } catch {}
+  try { $notify.Visible = $false; $notify.Dispose() } catch {}
+  try { if ($script:Mutex) { [void]$script:Mutex.ReleaseMutex(); $script:Mutex.Dispose() } } catch {}
+  try {
+    Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @(
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-STA',
+      '-File', ('"{0}"' -f $PSCommandPath)
+    ) | Out-Null
+  } catch { Write-TrayLog ('restart_failed ' + $_.Exception.Message) }
+  [System.Windows.Forms.Application]::Exit()
+}
+
 # --- the note itself ---
 $popup = New-Object System.Windows.Forms.Form
 $popup.Text = 'Riah To-Do'
@@ -2218,6 +2245,21 @@ $fileTimer.Interval = 1500
 $fileTimer.add_Tick({
   # Never re-lay-out the rows while Captain is typing into one of them.
   if ($script:EditId) { return }
+
+  # A newer copy of this script on disk is an update. Take it while the note is
+  # closed and no gesture is in flight -- never mid-drag, never mid-shot.
+  if ($script:ScriptStamp -and -not $script:ShotPath -and -not (Test-PopupShown) `
+      -and -not $script:RowDragId -and -not $script:Dragging -and -not $script:Resizing) {
+    $stamp = $null
+    try { $stamp = (Get-Item $PSCommandPath).LastWriteTimeUtc.Ticks } catch {}
+    if ($stamp -and $stamp -ne $script:ScriptStamp) {
+      # Only once the file has stopped changing. Relaunching an editor's
+      # half-written save would leave no tray at all.
+      if ($script:PendingStamp -eq $stamp) { Restart-ForUpdate; return }
+      $script:PendingStamp = $stamp
+    } elseif ($script:PendingStamp) { $script:PendingStamp = $null }
+  }
+
   $today = Get-Date -Format 'yyyy-MM-dd'
   $rolled = ($script:List.date -ne $today)
   if ((Sync-List $rolled) -or $rolled) { Refresh-Note }
@@ -2305,6 +2347,35 @@ if ($script:ShotPath) {
           # Drag it to the very top, thread and all.
           $top = @(Get-TopLevel)[0]
           if ($top -and $top.id -ne $host2.id) { Move-Before $host2.id $top.id }
+
+          # A step must reorder among its OWN steps. Captain, 2026-07-29:
+          # dragging "Make the songs" above "Tiktok vid" did nothing. This drives
+          # the real pointer path -- Get-DropTarget on real row geometry, then
+          # the same call MouseUp makes -- not just Move-Before on its own.
+          $popup.Invalidate()
+          [System.Windows.Forms.Application]::DoEvents()
+          Start-Sleep -Milliseconds 150
+          $gm = $null
+          try { $gm = $popup.CreateGraphics(); [void](Measure-Rows $gm) } catch {} finally { if ($gm) { $gm.Dispose() } }
+          $rowOne = $null; $rowTwo = $null
+          foreach ($r in $script:Rows) {
+            if ([string]$r.item.label -eq 'Step one') { $rowOne = $r }
+            if ([string]$r.item.label -eq 'Step two') { $rowTwo = $r }
+          }
+          if ($rowOne -and $rowTwo) {
+            $script:RowDragId = $rowTwo.id
+            $script:RowDragArmed = $true
+            Get-DropTarget (New-Object System.Drawing.Point(60, ($rowOne.y + 2)))
+            Write-Host ("SUBDRAG before=" + $script:DropBeforeId + " end=" + $script:DropAtEnd + " want=" + $rowOne.id)
+            if ($script:DropBeforeId -or $script:DropAtEnd) {
+              Move-Before $rowTwo.id $script:DropBeforeId
+            }
+            $script:RowDragId = $null
+            $script:RowDragArmed = $false
+            $script:DropBeforeId = $null
+            $script:DropAtEnd = $false
+            $script:DropAfterId = $null
+          }
         }
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 250

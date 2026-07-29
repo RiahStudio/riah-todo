@@ -100,11 +100,17 @@ const steps = list.items.filter((item) => item.parentId === host?.id);
 if (steps.length !== 2) {
   fail(`the note's subtasks did not survive the write: ${JSON.stringify(list.items, null, 2)}`);
 }
+// "Step two" was dragged above "Step one" through the real pointer path, so it
+// leads its task's steps while "Step one" keeps its own sub-thread underneath.
+// Captain, 2026-07-29: dragging a step above its sibling appeared to do nothing.
 const expectedOrder = [
-  "Added by the note", "Step one", "Deeper still", "Deepest of all", "Step two",
+  "Added by the note", "Step two", "Step one", "Deeper still", "Deepest of all",
 ];
 if (JSON.stringify(labels.slice(0, 5)) !== JSON.stringify(expectedOrder)) {
-  fail(`dragging the task to the top did not bring its whole thread in order: ${JSON.stringify(labels)}`);
+  fail(`a step did not reorder among its own steps: ${JSON.stringify(labels)}`);
+}
+if (list.items.find((item) => item.label === "Step two")?.parentId !== host?.id) {
+  fail("reordering a step tore it out of its task.");
 }
 
 // Nesting past one level is the point: a sub-thread under a sub-point.
