@@ -154,7 +154,10 @@ function New-Id { return [guid]::NewGuid().ToString() }
 $script:LockStaleMs = 10000
 $script:LockHandle = $null
 
-function Enter-StoreLock([int]$timeoutMs = 5000) {
+# Fifteen seconds, matching lib/store.mjs. The lock is held for milliseconds, so
+# nobody ever waits; this only stretches genuine contention, and a dead owner is
+# reclaimed at once via its PID.
+function Enter-StoreLock([int]$timeoutMs = 15000) {
   $lock = $script:StorePath + '.lock'
   $started = Get-Date
   $script:LockHandle = $null
