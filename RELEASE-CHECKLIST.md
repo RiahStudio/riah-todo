@@ -112,3 +112,42 @@ Still open, and all Captain's call:
       with the same voice, so the recommendation is **keep** — it is honest
       engineering history, and no path in it is secret.
 
+## Re-release (v1.0.x)
+
+The first release is done, so the gate for the next one is shorter. Run it in
+this order — the point of the order is that the cheap checks fail before the
+expensive ones.
+
+1. `npm ci`
+2. `npm run check` **on Windows**. The two GUI gates in `smoke:note` still need a
+   real interactive desktop; a headless or automated session cannot run them and
+   should say so rather than pass by omission.
+3. `npm audit --omit=dev`
+4. The by-hand pass at the top of this file — click, drag, both themes, 390px,
+   keyboard-only, and the unreadable-file state.
+5. `node "Riah Build Playbook/bin/publish-readiness-sweep.js" --project "_public-repos/riah-todo" --publishing`
+6. Rebuild the mirror with `New-PublicRelease.ps1`, then **re-append the project
+   `.gitignore` patterns** — the tool overwrites that file every single time.
+7. Fresh clone, `npm ci`, `npm run check` there. Ship what you tested.
+8. Tag, and build the ZIP with `git archive` from the tag — never by
+   right-clicking the mirror folder.
+
+Docs-only changes (README, `docs/index.html`) still go through steps 5–7. The
+publish sweep is what catches a secret or a private path sneaking into a public
+tree, and a docs edit is perfectly capable of carrying one.
+
+### Non-GUI validation, 2026-07-29
+
+Run in the workshop on Node 18+. These four are safe to run anywhere and need no
+desktop, no network and no credentials:
+
+| Command | Result |
+| --- | --- |
+| `npm test` | 64/64 pass |
+| `npm run smoke:race` | OK — `everyday=4x3`, `stress=12x3`, 0 refusals, no lost updates |
+| `npm run smoke:server` | OK — cross-origin, DNS-rebind and traversal all blocked; own page allowed |
+| `npm run smoke:guard` | OK — accidental empty write blocked, deliberate empty allowed |
+
+`npm run smoke:note` was **not** run in that pass — it draws the real tray note
+and needs an interactive desktop. It is still a required gate for any release.
+

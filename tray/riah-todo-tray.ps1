@@ -279,12 +279,29 @@ function Read-Store {
           try { if ($it.section -and @('today','tomorrow','future') -contains [string]$it.section) { $sec = [string]$it.section } } catch {}
           [void]$items.Add(@{ id = $id; label = $label; completed = $done; completedAt = $at; parentId = $parent; section = $sec })
         }
+        # A read that returns FEWER tasks than the file holds is the dangerous
+        # one: the note shows a short list, the next tick writes it back, and the
+        # rest are gone for real. The empty-write guard never saw this because
+        # three of twelve is not empty. Treat any shortfall as unreadable, which
+        # blocks every write until a clean read replaces it.
+        # (Captain, 2026-07-29 23:15: twelve tasks on disk, three on the note.)
+        $rawCount = @($j.items).Count
+        if ($items.Count -lt $rawCount) {
+          $script:ListUnreadable = $true
+          Write-TrayLog ('read_partial: parsed ' + $items.Count + ' of ' + $rawCount +
+            ' tasks - writes blocked until a clean read')
+        }
       }
     }
   } catch {
     Write-TrayLog ('read_fail ' + $_.Exception.Message)
   }
   $threaded = @(Invoke-Thread @($items.ToArray()))
+  if ($threaded.Count -lt $items.Count) {
+    $script:ListUnreadable = $true
+    Write-TrayLog ('thread_lost: ' + $items.Count + ' tasks in, ' + $threaded.Count +
+      ' out - writes blocked until a clean read')
+  }
   # A file that plainly contains work but parsed to nothing is the shape of the
   # 2026-07-29 00:21 incident: three open priorities on disk, "items=0" in the
   # log, no exception. Never accept that quietly -- say so, and try once more.
@@ -2439,7 +2456,17 @@ $fileTimer.add_Tick({
 
 Clear-TrayTip
 $notify.Visible = $true
-Write-TrayLog ('notify_visible items=' + @($script:List.items).Count + ' store=' + $script:StorePath)
+# Log what the FILE holds next to what we ended up with. When the note showed
+# three of twelve there was no line anywhere that said so, and working out which
+# stage lost them took a copy of the file and three separate experiments.
+$onDiskCount = -1
+try {
+  if (Test-Path -LiteralPath $script:StorePath) {
+    $onDiskCount = @(((Get-Content -LiteralPath $script:StorePath -Raw) | ConvertFrom-Json).items).Count
+  }
+} catch {}
+Write-TrayLog ('notify_visible items=' + @($script:List.items).Count + ' onDisk=' + $onDiskCount +
+  ' unreadable=' + [bool]$script:ListUnreadable + ' store=' + $script:StorePath)
 
 $fileTimer.Start()
 $awayTimer.Start()
