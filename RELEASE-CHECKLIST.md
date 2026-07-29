@@ -58,6 +58,21 @@ node "Riah Build Playbook/bin/New-PublicRelease.ps1" -Project "Riah To-Do" -Repo
 Then check the published commit out clean, `npm ci`, and run `npm run check`
 there. Ship what you tested, not what you meant to test.
 
+**Build the release ZIP from a fresh clone, never from `_public-repos/riah-todo`.**
+Running the suite in the mirror leaves `node_modules/` and a `scratch/tray.log`
+behind. Git ignores both, so they will not reach GitHub — but a ZIP made by
+right-clicking the folder would carry them.
+
+## The public page
+
+`docs/index.html` is the sales page: Captain's approved copy, self-contained,
+follows the reader's light or dark theme. It is served by turning on GitHub
+Pages (Settings → Pages → branch `main`, folder `/docs`) once the repo is public.
+
+Both **Get Riah To-Do** buttons point at `releases/latest`. **That link 404s
+until `v1.0.0` exists.** Cut the tag before, or in the same sitting as, turning
+the page on.
+
 ## Suggested repository topics
 
 Prepared, **not applied** — setting them is Captain's call:
@@ -79,9 +94,15 @@ Prepared, **not applied** — setting them is Captain's call:
 - [x] README shows the app as it actually looks, and offers **Code → Download
       ZIP** so the instructions are true before any release exists.
 
+- [x] Release mirror synced with the workshop and re-audited from a clean clone
+      (`e34e9af`): sections, caps of 100, sub-thread reorder, duplicate labels,
+      depth-indented filing, and the public page. CI green on that commit.
+
 Still open, and all Captain's call:
 
 - [ ] Tag `v1.0.0` and attach a ZIP, so the releases link has something behind it
+      — **the page's two buttons are dead until this exists**
+- [ ] Turn on GitHub Pages for `/docs` once public, so the page is reachable
 - [ ] Repository topics (suggested list above) — not applied
 - [ ] Keep or trim the studio commentary in the source. Riah Usage ships public
       with the same voice, so the recommendation is **keep** — it is honest
