@@ -98,14 +98,17 @@ Prepared, **not applied** — setting them is Captain's call:
       (`e34e9af`): sections, caps of 100, sub-thread reorder, duplicate labels,
       depth-indented filing, and the public page. CI green on that commit.
 
-Still open, and all Captain's call:
+## Launched 2026-07-29
 
-- [ ] Tag `v1.0.0` and attach a ZIP, so the releases link has something behind it
-      — **the page's two buttons are dead until this exists**
-- [ ] Turn on GitHub Pages for `/docs` once public, so the page is reachable
-- [ ] Repository topics (suggested list above) — not applied
+- [x] `v1.0.0` tagged at `875f012`, with `riah-todo-v1.0.0.zip` attached. The ZIP
+      is `git archive` of the tag, so it carries tracked files only.
+- [x] Repository is **public**, with topics and description applied
+- [x] GitHub Pages serving `/docs` at <https://riahstudio.github.io/riah-todo/>
+- [x] `repo-map.mjs write` run — the map now lists riah-todo as public
+- [x] Both **Get Riah To-Do** buttons resolve to the release
+
+Still open, and all Captain's call:
 - [ ] Keep or trim the studio commentary in the source. Riah Usage ships public
       with the same voice, so the recommendation is **keep** — it is honest
       engineering history, and no path in it is secret.
-- [ ] Flip visibility to public — **Captain only**
-- [ ] `node "_shared-agent-rules/bin/repo-map.mjs" write` immediately after
+
