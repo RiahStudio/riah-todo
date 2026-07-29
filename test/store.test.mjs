@@ -9,6 +9,7 @@ import {
   localDateKey,
   ops,
   readPriorities,
+  readPrioritiesForDisplay,
   readSettings,
   sweepCompleted,
   topLevel,
@@ -125,13 +126,34 @@ test("reorder moves what it names and keeps what it does not", () => {
   assert.deepEqual(reordered.items.map((item) => item.label), ["C", "A", "B"]);
 });
 
-test("a torn or unreadable file reads as empty instead of throwing", () => {
+test("a torn file is refused, not silently emptied and overwritten", () => {
   const file = scratch();
-  writeFileSync(file, '{"date": "2026-07-28", "items": [{"label": "hal');
-  assert.deepEqual(readPriorities().items, []);
-  // And the next write repairs it.
-  const fixed = ops.add("Back in business");
-  assert.equal(fixed.items.length, 1);
+  // This test used to assert the opposite — that a torn file "reads as empty".
+  // That was the bug: the next write then replaced real work with one new task.
+  const torn = '{"date": "2026-07-28", "items": [{"label": "hal';
+  writeFileSync(file, torn);
+
+  assert.throws(() => readPriorities(), /could not read your list/);
+  assert.throws(() => ops.add("Back in business"), /could not read your list/);
+  assert.equal(readFileSync(file, "utf8"), torn, "the file must be left byte-for-byte alone");
+
+  // A surface that has to render something is told to ask for recovery.
+  const shown = readPrioritiesForDisplay({ file });
+  assert.equal(shown.ok, false);
+  assert.equal(shown.needsRecovery, true);
+  assert.match(shown.error, /could not read your list/);
+  assert.ok(shown.error.includes(file), "the message must name the file");
+
+  // Once the file is sane again, everything works.
+  writeFileSync(file, JSON.stringify({ date: localDateKey(), items: [] }));
+  assert.equal(ops.add("Back in business").items.length, 1);
+});
+
+test("a missing file still starts an empty list", () => {
+  const file = scratch();
+  // Nothing written at all — this is a first run, not a corruption.
+  assert.deepEqual(readPriorities({ file }).items, []);
+  assert.equal(ops.add("First ever task").items.length, 1);
 });
 
 test("setCompleted works by label so an agent can tick things off by name", () => {

@@ -12,6 +12,26 @@ for.
 The list is **one JSON file**. The note reads and writes it directly, so nothing
 else has to be running — no server, no background service, no account.
 
+## Download and install
+
+1. Grab the latest release ZIP from the
+   [releases page](https://github.com/RiahStudio/riah-todo/releases).
+2. Extract it somewhere you'll keep it — `Documents\Riah To-Do` is fine.
+3. Double-click **`Start Riah To-Do.bat`**.
+
+That's it. An icon appears by the clock; click it.
+
+**Windows only.** The note is a small Windows tray program written in PowerShell
+5.1, which ships with Windows — there is nothing to install and it does not run
+on macOS or Linux.
+
+**Node.js 18+ is optional.** The note itself never needs it. Node is only
+required for the board page and the AI tools; if it's missing, the board tells
+you so instead of failing quietly.
+
+**Nothing leaves your machine.** No account, no sync, no telemetry. Your list is
+a JSON file in your own `%APPDATA%`.
+
 ## Start it
 
 Double-click **`Start Riah To-Do.bat`**. That's the whole install.
@@ -114,6 +134,22 @@ and speed. Keyboard inside the note covers adding (type, Enter) and closing
 Point somewhere else with `RIAH_TODO_FILE` or `RIAH_TODO_DIR` — a synced folder
 works fine.
 
+### Backing up, and getting your list back
+
+The list is one small JSON file. Copy it anywhere; that's a complete backup.
+
+If the file ever gets damaged — a machine dies mid-write, a sync tool mangles it —
+**Riah To-Do refuses to touch it.** The note shows "list file unreadable", the
+board shows the same with the path, and every change is rejected until it's
+sorted. It will not show you a convincing empty list and let you type over the
+day you lost.
+
+To recover: open `%APPDATA%\Riah To-Do`, fix or rename `today.json`, and click
+the icon again. Anything already filed is still in `today-filed.json`.
+
+Removed something by mistake? The board offers **Undo** right after a removal,
+and it restores the task, its subtasks and their order.
+
 Every write is temp-file-then-rename, so a reader always gets a whole list, never
 half of one. Anything else watching the file picks up changes within a couple of
 seconds.
@@ -175,6 +211,12 @@ scratch/tray.log     what the note did, and when. Read this first if it misbehav
 Anything that can read and write JSON can join in — the file is the API. Riah
 Code, the desktop app this was carved out of, keeps its own priorities panel and
 simply reads and writes the same file, which is why the two never disagree.
+
+## Something wrong?
+
+Open an issue: <https://github.com/RiahStudio/riah-todo/issues>. The most useful
+thing you can attach is `scratch/tray.log` from the app folder — it records what
+the note did and when, including anything it refused to do and why.
 
 MIT licensed. The fonts in `assets/fonts/` are SIL OFL; their licences ship
 beside them.

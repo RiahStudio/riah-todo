@@ -48,3 +48,19 @@ active-writes/
 *.log
 .DS_Store
 Thumbs.db
+
+# --- Riah To-Do specific -----------------------------------------------------
+# Kept ALONGSIDE the hardened patterns above, never instead of them.
+# A person's actual day. It lives in %APPDATA%, but never publish one that
+# wanders into the folder.
+today.json
+today-filed.json
+settings.json
+undo.json
+
+# Lock and half-written files from an interrupted write.
+*.lock
+*.tmp
+
+# Superseded work kept for reference, not for shipping.
+_REJECTED_/

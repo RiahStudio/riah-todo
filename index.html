@@ -249,6 +249,51 @@
     font: 400 0.9rem/1 var(--font-ui);
   }
 
+  .recovery {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--revise);
+    border-left-width: 4px;
+    border-radius: 5px;
+    color: var(--ink);
+    font: 400 0.85rem/1.5 var(--font-ui);
+  }
+  .recovery[hidden] { display: none; }
+
+  .undo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--body);
+    font: 400 0.85rem/1.4 var(--font-ui);
+  }
+  .undo[hidden] { display: none; }
+  .undo strong { color: var(--ink); font-weight: 600; }
+  .undo button {
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--pink);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--pink);
+    font: 700 0.78rem/1 var(--font-ui);
+    cursor: pointer;
+  }
+  .undo button:hover { background: var(--raised); }
+
+  /* Touch and pen have no hover. Anything that only appears on hover would be
+     invisible until activated — so on a coarse pointer, show it always. */
+  @media (pointer: coarse) {
+    .kill, .sub, .grip { opacity: 1; }
+    .tick { width: 30px; height: 30px; }
+  }
+
   /* Announcements for screen readers only — visible layout is unchanged. */
   .sr-only {
     position: absolute;
@@ -345,6 +390,11 @@
   </form>
 
   <div class="error" id="error" role="alert" hidden></div>
+  <div class="recovery" id="recovery" role="alert" hidden></div>
+  <div class="undo" id="undoBar" hidden>
+    <span>Removed <strong id="undoWhat"></strong>.</span>
+    <button type="button" id="undoBtn">Undo</button>
+  </div>
   <div id="live" class="sr-only" role="status" aria-live="polite"></div>
 
   <section class="settings" id="settings">
@@ -401,6 +451,8 @@
   let dragId = null;
   // Which task currently has an open "add a step" box, if any.
   let subtaskFor = null;
+  // True while the list file cannot be read — the UI must not pretend it's empty.
+  let needsRecovery = false;
 
   const stored = localStorage.getItem("riah-todo-theme");
   if (stored) document.documentElement.dataset.theme = stored;
@@ -411,6 +463,14 @@
   });
 
   const liveEl = document.getElementById("live");
+  const recoveryEl = document.getElementById("recovery");
+  const undoBar = document.getElementById("undoBar");
+  const undoWhat = document.getElementById("undoWhat");
+  document.getElementById("undoBtn").addEventListener("click", async () => {
+    // A body is what makes call() use POST — the API only accepts POST.
+    await run("/api/undo", {});
+    say("Put it back.");
+  });
 
   /** Announce something to a screen reader without putting it on screen. */
   function say(message) {
@@ -434,7 +494,26 @@
     const payload = await response.json();
     if (!payload.ok) throw new Error(payload.error || "That change did not stick.");
     if (payload.settings) applySettings(payload.settings);
+    // A list we could not read must be reported, never rendered as empty.
+    needsRecovery = payload.needsRecovery === true;
+    recoveryEl.hidden = !needsRecovery;
+    if (needsRecovery) {
+      recoveryEl.textContent = payload.error;
+      say(payload.error);
+    }
+    // While the file is unreadable, do not invite anyone to type a new list on
+    // top of it — that is precisely how the old day gets overwritten.
+    newEl.disabled = needsRecovery;
+    addBtn.disabled = needsRecovery || !newEl.value.trim();
+    newEl.placeholder = needsRecovery ? "Fix the list file first" : "Add a priority";
+    if ("undo" in payload) showUndo(payload.undo);
     return payload.priorities;
+  }
+
+  /** One level of undo, offered for a while after a removal. */
+  function showUndo(available) {
+    undoBar.hidden = !available;
+    if (available) undoWhat.textContent = available.what;
   }
 
   async function run(path, body) {
@@ -461,7 +540,8 @@
       ? "<strong>0</strong><span>chosen for today</span>"
       : `<strong>${total - done}</strong><span>left of ${total} — ${done} done</span>`;
 
-    emptyEl.hidden = total > 0;
+    // "Nothing chosen yet" is a lie when the truth is "we could not read it".
+    emptyEl.hidden = total > 0 || needsRecovery;
 
     const nodes = [];
     for (const item of state.items) {
@@ -674,7 +754,7 @@
     }
   });
 
-  newEl.addEventListener("input", () => { addBtn.disabled = !newEl.value.trim(); });
+  newEl.addEventListener("input", () => { addBtn.disabled = needsRecovery || !newEl.value.trim(); });
   document.getElementById("add").addEventListener("submit", async (event) => {
     event.preventDefault();
     const value = newEl.value.trim();

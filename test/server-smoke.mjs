@@ -5,7 +5,7 @@
 //   node test/server-smoke.mjs
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -111,8 +111,50 @@ const noOrigin = await fetch(`${base}/api/add`, {
 if (!noOrigin.ok) fail(`a local no-Origin request was rejected (${noOrigin.status}).`);
 if (await count() !== 2) fail("the local script's add did not land.");
 
+// 6. Path traversal. A string-prefix containment check passes for a sibling
+//    folder whose name merely starts the same way, and misses encoded and
+//    backslash forms entirely.
+// A plain "/../x" is normalised to "/x" by the URL parser before it ever
+// reaches us, so the forms that actually matter are the encoded ones the parser
+// leaves alone. A sentinel is dropped one level up: nothing may ever return it.
+const sentinelName = `riah-todo-traversal-${Date.now()}.txt`;
+const sentinelBody = "IF-YOU-CAN-READ-THIS-THE-SERVER-ESCAPED-ITS-FOLDER";
+const sentinel = path.join(app, "..", sentinelName);
+writeFileSync(sentinel, sentinelBody);
+
+const traversals = [
+  `/..%2f${sentinelName}`,
+  `/%2e%2e%2f${sentinelName}`,
+  `/..%5c${sentinelName}`,                 // encoded Windows backslash
+  `/%2e%2e%5c${sentinelName}`,
+  `/%2e%2e%2f%2e%2e%2f${sentinelName}`,
+  `/....//${sentinelName}`,
+  `/%252e%252e%252f${sentinelName}`,       // double-encoded
+  "/%2e%2e%2f%2e%2e%2f%2e%2e%2fWindows/win.ini",
+  "/C:/Windows/win.ini",
+];
+try {
+  for (const attempt of traversals) {
+    const res = await fetch(`${base}${attempt}`);
+    const body = await res.text();
+    if (body.includes(sentinelBody)) fail(`path traversal escaped the app folder: ${attempt}`);
+    if (body.includes("[extensions]") || body.includes("[fonts]")) {
+      fail(`path traversal reached a system file: ${attempt}`);
+    }
+    if (res.status === 200) fail(`traversal attempt was answered 200 instead of refused: ${attempt}`);
+  }
+} finally {
+  rmSync(sentinel, { force: true });
+}
+
+// And the files it SHOULD serve still work.
+const page = await fetch(`${base}/`);
+if (!page.ok) fail("the board page itself stopped being served.");
+const asset = await fetch(`${base}/assets/riah-todo.svg`);
+if (!asset.ok) fail("a legitimate asset stopped being served.");
+
 server.kill();
 console.log(
   "SERVER_SMOKE_OK cross_origin_simple=blocked cross_origin_json=blocked "
-  + "dns_rebind=blocked own_page=allowed local_script=allowed",
+  + `dns_rebind=blocked traversal=blocked(${traversals.length}) own_page=allowed local_script=allowed`,
 );

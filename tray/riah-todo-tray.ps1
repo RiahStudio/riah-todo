@@ -157,6 +157,7 @@ $script:LockHandle = $null
 function Enter-StoreLock([int]$timeoutMs = 5000) {
   $lock = $script:StorePath + '.lock'
   $started = Get-Date
+  $script:LockHandle = $null
   while ($true) {
     try {
       $script:LockHandle = [System.IO.File]::Open($lock, 'CreateNew', 'Write', 'None')
@@ -171,8 +172,11 @@ function Enter-StoreLock([int]$timeoutMs = 5000) {
         }
       } catch {}
       if (((Get-Date) - $started).TotalMilliseconds -gt $timeoutMs) {
-        # Better to write unlocked than to refuse Captain a tick.
-        Write-TrayLog 'lock_timeout: proceeding without it'
+        # Writing unlocked here would cancel the guarantee at the exact moment it
+        # matters. Refuse instead: nothing written, nothing lost, and the caller
+        # aborts rather than racing the other writer.
+        Write-TrayLog 'lock_timeout: refusing to write'
+        $script:LockHandle = $null
         return $false
       }
       Start-Sleep -Milliseconds 15
@@ -181,10 +185,12 @@ function Enter-StoreLock([int]$timeoutMs = 5000) {
 }
 
 function Exit-StoreLock {
-  if ($script:LockHandle) {
-    try { $script:LockHandle.Dispose() } catch {}
-    $script:LockHandle = $null
-  }
+  # ONLY remove the lock file if this process is the one holding it. Deleting it
+  # unconditionally after a failed acquire would free somebody else's live lock
+  # and hand two writers the same list.
+  if (-not $script:LockHandle) { return }
+  try { $script:LockHandle.Dispose() } catch {}
+  $script:LockHandle = $null
   try { Remove-Item -LiteralPath ($script:StorePath + '.lock') -Force -ErrorAction SilentlyContinue } catch {}
 }
 
@@ -193,11 +199,27 @@ function Read-Store {
   # never a dialog. The next good write repairs it.
   $today = Get-Date -Format 'yyyy-MM-dd'
   $items = New-Object System.Collections.ArrayList
+  # "Not there yet" and "there but unreadable" are different. A first run may
+  # start empty; a torn file must never be shown as an empty list and then
+  # written over. Mirrors ListUnreadableError in lib/store.mjs.
+  $script:ListUnreadable = $false
   try {
     if (Test-Path -LiteralPath $script:StorePath) {
       $raw = [System.IO.File]::ReadAllText($script:StorePath)
       if ($raw -and $raw.Trim()) {
-        $j = $raw | ConvertFrom-Json
+        $j = $null
+        try {
+          $j = $raw | ConvertFrom-Json
+        } catch {
+          $script:ListUnreadable = $true
+          Write-TrayLog ('read_corrupt: ' + $_.Exception.Message)
+          return @{ date = $today; items = @() }
+        }
+        if ($null -eq $j -or $null -eq $j.items) {
+          $script:ListUnreadable = $true
+          Write-TrayLog 'read_corrupt: not a Riah To-Do list'
+          return @{ date = $today; items = @() }
+        }
         foreach ($it in @($j.items)) {
           if ($null -eq $it) { continue }
           $label = ''
@@ -324,6 +346,11 @@ function Get-TopLevel {
 
 function Write-Store($list) {
   try {
+    # A list we could not read is a list we must not replace.
+    if ($script:ListUnreadable) {
+      Write-TrayLog 'write_blocked: the list file is unreadable - leaving it untouched'
+      return $false
+    }
     # THE GUARD. Losing a day's priorities is the one unacceptable failure here,
     # and the only way it can happen is a bad read turning into a good write. So:
     # never let an empty in-memory list flatten a file that still has work in it.
@@ -681,23 +708,35 @@ function Remove-PriorityUnlocked([string]$id) {
 # Every change is read-modify-write, so each one holds the lock across BOTH
 # halves. The bodies above are deliberately lock-free: one place takes the lock,
 # one place releases it, and an early return still releases because of finally.
+#
+# If the lock cannot be had, the change does NOT happen. Saying so is better than
+# racing another window and losing whichever edit finishes second.
+function Invoke-Locked([scriptblock]$work) {
+  if (-not (Enter-StoreLock)) {
+    Set-Flash 'Another window is mid-change. Nothing altered - try again.'
+    Refresh-Note
+    return
+  }
+  try { & $work } finally { Exit-StoreLock }
+}
+
 function Add-Priority([string]$label, [string]$parentId = $null) {
-  [void](Enter-StoreLock); try { Add-PriorityUnlocked $label $parentId } finally { Exit-StoreLock }
+  Invoke-Locked { Add-PriorityUnlocked $label $parentId }
 }
 function Rename-Priority([string]$id, [string]$label) {
-  [void](Enter-StoreLock); try { Rename-PriorityUnlocked $id $label } finally { Exit-StoreLock }
+  Invoke-Locked { Rename-PriorityUnlocked $id $label }
 }
 function Toggle-Priority([string]$id) {
-  [void](Enter-StoreLock); try { Toggle-PriorityUnlocked $id } finally { Exit-StoreLock }
+  Invoke-Locked { Toggle-PriorityUnlocked $id }
 }
 function Move-Before([string]$id, [string]$beforeId) {
-  [void](Enter-StoreLock); try { Move-BeforeUnlocked $id $beforeId } finally { Exit-StoreLock }
+  Invoke-Locked { Move-BeforeUnlocked $id $beforeId }
 }
 function Set-Parent([string]$id, [string]$parentId) {
-  [void](Enter-StoreLock); try { Set-ParentUnlocked $id $parentId } finally { Exit-StoreLock }
+  Invoke-Locked { Set-ParentUnlocked $id $parentId }
 }
 function Remove-Priority([string]$id) {
-  [void](Enter-StoreLock); try { Remove-PriorityUnlocked $id } finally { Exit-StoreLock }
+  Invoke-Locked { Remove-PriorityUnlocked $id }
 }
 
 # --- look: the Riah interface signature, drawn ---
@@ -1367,7 +1406,14 @@ $popup.add_Paint({
   $items = @($script:List.items)
   $left = Get-Remaining
   $done = $items.Count - $left
-  if ($items.Count -eq 0) {
+  if ($script:ListUnreadable) {
+    # Never draw a convincing empty list over a file we could not read.
+    $bBad = New-Object System.Drawing.SolidBrush($C.Hot)
+    [void]$g.DrawString('LIST FILE UNREADABLE', $F.Meta, $bBad, $PAD, ($y + 4))
+    [void]$g.DrawString('Nothing was changed. Your file is', $F.Row, $bText, $PAD, ($y + 22))
+    [void]$g.DrawString('untouched - open the folder to fix it.', $F.Row, $bText, $PAD, ($y + 40))
+    $bBad.Dispose()
+  } elseif ($items.Count -eq 0) {
     [void]$g.DrawString('NOTHING CHOSEN YET', $F.Meta, $bFaint, $PAD, ($y + 4))
   } else {
     $countCol = if ($left -eq 0) { $C.Keep } else { $C.Text }

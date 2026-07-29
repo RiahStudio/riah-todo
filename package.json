@@ -3,7 +3,18 @@
   "version": "1.0.0",
   "description": "Today's list as a note by the Windows clock. Click the tray icon, tick things off, click away. One JSON file, no server required.",
   "license": "MIT",
+  "//": "private: this is a Windows app people download from GitHub, not an npm package. It stops an accidental `npm publish`; remove it only if we deliberately choose npm distribution.",
+  "private": true,
   "keywords": ["todo", "tray", "windows", "productivity", "mcp"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RiahStudio/riah-todo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RiahStudio/riah-todo/issues"
+  },
+  "homepage": "https://github.com/RiahStudio/riah-todo#readme",
+  "os": ["win32"],
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test test/*.test.mjs",
@@ -11,7 +22,8 @@
     "smoke:guard": "node test/guard-smoke.mjs",
     "smoke:server": "node test/server-smoke.mjs",
     "smoke:race": "node test/concurrency-smoke.mjs",
-    "check": "npm test && npm run smoke:race && npm run smoke:server && npm run smoke:guard && npm run smoke:note"
+    "check": "npm test && npm run smoke:race && npm run smoke:server && npm run smoke:guard && npm run smoke:note",
+    "check:ci": "npm test && npm run smoke:race && npm run smoke:server"
   },
   "engines": {
     "node": ">=18"

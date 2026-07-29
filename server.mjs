@@ -9,7 +9,10 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_ITEMS, MAX_SUBTASKS, ops, readPriorities, readSettings, storePath } from "./lib/store.mjs";
+import {
+  MAX_ITEMS, MAX_SUBTASKS, ops, readPriorities, readPrioritiesForDisplay, readSettings, storePath,
+  undoAvailable,
+} from "./lib/store.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.RIAH_TODO_PORT || 8779);
@@ -79,10 +82,22 @@ async function readBody(req) {
 }
 
 function serveStatic(req, res, urlPath) {
-  const rel = urlPath === "/" ? "index.html" : decodeURIComponent(urlPath).replace(/^\/+/, "");
-  const file = path.join(here, rel);
-  // Never serve outside the app folder, whatever the URL claims.
-  if (!file.startsWith(here) || !existsSync(file) || !statSync(file).isFile()) {
+  let rel;
+  try {
+    rel = urlPath === "/" ? "index.html" : decodeURIComponent(urlPath).replace(/^[/\\]+/, "");
+  } catch {
+    // A malformed percent-escape is not a path.
+    res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Bad request");
+    return;
+  }
+  const file = path.resolve(here, rel);
+  // A string prefix is not containment: "…\Riah To-Do-evil" starts with
+  // "…\Riah To-Do". Ask the path module whether it is genuinely inside, which
+  // also settles encoded traversal and Windows backslashes.
+  const inside = path.relative(here, file);
+  const escapes = inside === "" || inside.startsWith("..") || path.isAbsolute(inside);
+  if (escapes || !existsSync(file) || !statSync(file).isFile()) {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     res.end("Not found");
     return;
@@ -96,9 +111,21 @@ function serveStatic(req, res, urlPath) {
 
 async function handleApi(req, res, urlPath) {
   if (req.method === "GET" && urlPath === "/api/list") {
+    // An unreadable list is reported as needing recovery. Rendering a convincing
+    // empty list is how somebody types work on top of the file they just lost.
+    const shown = readPrioritiesForDisplay();
+    if (!shown.ok) {
+      sendJson(res, 200, {
+        ok: true, needsRecovery: true, error: shown.error, file: shown.file,
+        priorities: { date: "", items: [] }, settings: readSettings(),
+        max: MAX_ITEMS, maxSubtasks: MAX_SUBTASKS,
+      });
+      return;
+    }
     sendJson(res, 200, {
       ok: true,
-      priorities: readPriorities(),
+      priorities: shown.priorities,
+      undo: undoAvailable(),
       settings: readSettings(),
       max: MAX_ITEMS,
       maxSubtasks: MAX_SUBTASKS,
@@ -145,6 +172,9 @@ async function handleApi(req, res, urlPath) {
       return;
     case "/api/replace":
       sendJson(res, 200, { ok: true, priorities: ops.replace(body.labels) });
+      return;
+    case "/api/undo":
+      sendJson(res, 200, { ok: true, priorities: ops.undo() });
       return;
     case "/api/clear-completed":
       sendJson(res, 200, { ok: true, priorities: ops.clearCompleted() });

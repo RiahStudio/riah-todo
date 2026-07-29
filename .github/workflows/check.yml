@@ -1,0 +1,40 @@
+# The part of Riah To-Do a CI machine can honestly test.
+#
+# The real tray note needs an interactive Windows desktop to draw itself, which
+# a runner does not have — so `smoke:note` and `smoke:guard` are NOT run here.
+# They are a release-machine gate, documented in RELEASE-CHECKLIST.md. Pretending
+# CI covers them would be worse than admitting it does not.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  node:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Rules, threading, the corruption/archive/lock safety net, the race, and
+      # the loopback server's origin, rebinding and traversal defences.
+      - run: npm run check:ci
+      - run: npm audit --omit=dev
+      # The tray script has to stay parseable and ASCII-only for PowerShell 5.1.
+      - name: PowerShell parses, and stays ASCII
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            "tray/riah-todo-tray.ps1", [ref]$null, [ref]$errors)
+          if ($errors.Count) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          if (Select-String -Path "tray/riah-todo-tray.ps1" -Pattern '[^\x00-\x7F]') {
+            Write-Error "Non-ASCII characters in the tray script"; exit 1
+          }
+          Write-Host "tray script OK"
