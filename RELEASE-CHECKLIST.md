@@ -63,15 +63,13 @@ Running the suite in the mirror leaves `node_modules/` and a `scratch/tray.log`
 behind. Git ignores both, so they will not reach GitHub — but a ZIP made by
 right-clicking the folder would carry them.
 
-## The public page
+## The public face
 
-`docs/index.html` is the sales page: Captain's approved copy, self-contained,
-follows the reader's light or dark theme. It is served by turning on GitHub
-Pages (Settings → Pages → branch `main`, folder `/docs`) once the repo is public.
-
-Both **Get Riah To-Do** buttons point at `releases/latest`. **That link 404s
-until `v1.0.0` exists.** Cut the tag before, or in the same sitting as, turning
-the page on.
+Same pattern as Riah Usage: the **README on the GitHub repo** is the product
+page (shots, pitch, quick start). `docs/index.html` is only a redirect to that
+README, kept so old `github.io` links still land somewhere useful. Clear the
+repo homepage field (or leave it empty) — do not point visitors at a marketing
+shell.
 
 ## Suggested repository topics
 
@@ -111,6 +109,15 @@ Still open, and all Captain's call:
 - [ ] Keep or trim the studio commentary in the source. Riah Usage ships public
       with the same voice, so the recommendation is **keep** — it is honest
       engineering history, and no path in it is secret.
+
+## v1.0.1 — 2026-08-01
+
+- [x] Rolling `.prev` backup in store + tray — nested sub-threads survive reboot /
+      a flat rewrite
+- [x] Public page restyled to the shared Riah signature (Usage dark/light: grid,
+      reg marks, theme toggle, product shots up front)
+- [x] `v1.0.1` tagged at `94d4ce5`, ZIP + release notes with screenshots
+- [x] 64/64 `npm test` green before push
 
 ## Re-release (v1.0.x)
 
