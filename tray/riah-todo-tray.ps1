@@ -509,7 +509,7 @@ function Write-Store($list) {
     }
     $obj = [ordered]@{ date = [string]$list.date; items = @($rows) }
     $json = ($obj | ConvertTo-Json -Depth 5)
-    # Rolling backup of the last good list — so a flat rewrite after reboot
+    # Rolling backup of the last good list - so a flat rewrite after reboot
     # (or any other bad write) can be undone without digging through Temp.
     if (Test-Path -LiteralPath $script:StorePath) {
       try {

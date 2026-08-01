@@ -6,8 +6,10 @@ it's gone. Drag it where you want it. Nothing to leave open, no window to hunt
 for.
 
 <p align="center">
-  <img src="docs/screenshots/note-dark.png" width="49%" alt="Riah To-Do — the note open, four tasks left of six for today, steps indented under Ship the Gumroad listing, a Tomorrow group and a Later group underneath" />
-  <img src="docs/screenshots/note-scrolling.png" width="49%" alt="Riah To-Do — the same note pulled down to a smaller height, a longer list scrolling inside it with a slim bar on the right" />
+  <img src="docs/screenshots/note-dark.png" width="100%" alt="Riah To-Do open on a Windows desktop, sitting above the clock with today&rsquo;s nested tasks" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/note-scrolling.png" width="100%" alt="Riah To-Do shortened on the same desktop, a longer list scrolling inside the note" />
 </p>
 
 The list is **one JSON file**. The note reads and writes it directly, so nothing

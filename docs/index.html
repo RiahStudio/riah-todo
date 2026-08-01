@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Riah To-Do</title>
-<meta name="description" content="The to-do list you&rsquo;ll actually open. The thing you need to remember sits where you&rsquo;re already looking." />
+<meta name="description" content="The to-do list you&rsquo;ll actually open. One click by your clock, click away and it&rsquo;s gone." />
 <meta name="theme-color" content="#0F0F11" />
 <meta name="color-scheme" content="dark light" />
 <link rel="icon" type="image/svg+xml" href="assets/riah-todo.svg" />
@@ -12,7 +12,7 @@
 
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Riah To-Do" />
-<meta property="og:description" content="The to-do list you&rsquo;ll actually open. The thing you need to remember sits where you&rsquo;re already looking." />
+<meta property="og:description" content="The to-do list you&rsquo;ll actually open. One click by your clock, click away and it&rsquo;s gone." />
 <meta property="og:image" content="https://riahstudio.github.io/riah-todo/screenshots/social-card.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -21,7 +21,7 @@
 <meta name="twitter:image" content="https://riahstudio.github.io/riah-todo/screenshots/social-card.png" />
 
 <style>
-  /* Same Riah signature as Usage / the note: Ink/Mono, grid, reg marks, dark+light. */
+  /* Same Riah signature as Usage: Ink/Mono, grid, reg marks, dark+light. */
   :root {
     --bg: #0F0F11;
     --bg-raised: #141417;
@@ -32,10 +32,7 @@
     --rule-strong: rgba(255, 255, 255, 0.16);
     --rule-hard: #EDEDEF;
     --keep: #3FCF7F;
-    --revise: #E9BA45;
-    --discard: #F26D5B;
     --riah-brand: #FF5CA8;
-    --riah-glow: rgba(255, 92, 168, 0.2);
     --on-pink: #12060B;
     --shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
     --font-brand: 'Instrument Serif', 'DM Serif Display', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
@@ -43,7 +40,6 @@
     --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --radius-chip: 5px;
     --radius: 8px;
-    --radius-lg: 14px;
     --radius-pill: 999px;
   }
   [data-theme="light"] {
@@ -56,10 +52,7 @@
     --rule-strong: rgba(0, 0, 0, 0.25);
     --rule-hard: #111111;
     --keep: #158A46;
-    --revise: #B58004;
-    --discard: #D42B2B;
     --riah-brand: #C21868;
-    --riah-glow: transparent;
     --on-pink: #FFFFFF;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 5px 16px rgba(0, 0, 0, 0.08);
   }
@@ -74,24 +67,21 @@
       repeating-linear-gradient(90deg, transparent 0 89px, rgba(128, 128, 128, 0.05) 89px 90px),
       repeating-linear-gradient(0deg, transparent 0 89px, rgba(128, 128, 128, 0.05) 89px 90px);
     color: var(--body);
-    line-height: 1.65;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
   }
   ::selection { background: var(--ink); color: var(--bg); }
   a { color: var(--ink); text-decoration: none; }
   a:hover { color: var(--dim); }
 
   .rt-regmarks { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
-  .rt-regmark {
-    position: fixed; width: 26px; height: 26px; pointer-events: none; z-index: 0;
-  }
+  .rt-regmark { position: fixed; width: 26px; height: 26px; z-index: 0; }
   .rt-regmark-tl { top: 20px; left: 20px; border-top: 1px solid var(--rule-strong); border-left: 1px solid var(--rule-strong); }
   .rt-regmark-tr { top: 20px; right: 20px; border-top: 1px solid var(--rule-strong); border-right: 1px solid var(--rule-strong); }
   .rt-regmark-bl { bottom: 20px; left: 20px; border-bottom: 1px solid var(--rule-strong); border-left: 1px solid var(--rule-strong); }
   .rt-regmark-br { bottom: 20px; right: 20px; border-bottom: 1px solid var(--rule-strong); border-right: 1px solid var(--rule-strong); }
   .rt-regmark-cap {
-    position: fixed; font-family: var(--font-mono); font-size: 9px; font-weight: 400;
+    position: fixed; font-family: var(--font-mono); font-size: 9px;
     letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim); opacity: 0.7;
     pointer-events: none; z-index: 0; white-space: nowrap;
   }
@@ -101,7 +91,7 @@
   .rt-app {
     display: flex; flex-direction: column;
     min-height: 100vh; min-height: 100dvh;
-    width: 100%; max-width: 640px; margin: 0 auto;
+    width: 100%; max-width: 520px; margin: 0 auto;
     padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
     background: var(--bg);
     border-left: 1px solid var(--rule);
@@ -110,7 +100,7 @@
     position: relative; z-index: 1;
   }
 
-  .rt-header { flex: none; padding: 12px 20px 0; margin: 0 0 2px; }
+  .rt-header { flex: none; padding: 12px 16px 0; }
   .rt-header-row {
     display: flex; align-items: center; justify-content: space-between;
     padding-bottom: 8px; border-bottom: 2px solid var(--rule-hard);
@@ -121,20 +111,18 @@
   }
   .rt-logo .riah-brand {
     font-family: var(--font-brand); font-style: italic; font-weight: 400;
-    font-size: 20px; letter-spacing: -0.02em; line-height: 1;
-    color: var(--riah-brand);
+    font-size: 20px; letter-spacing: -0.02em; color: var(--riah-brand);
   }
   .rt-logo .riah-product {
     font-family: var(--font-brand); font-style: normal; font-weight: 400;
-    font-size: 18px; letter-spacing: -0.02em; line-height: 1;
-    color: var(--ink);
+    font-size: 18px; letter-spacing: -0.02em; color: var(--ink);
   }
   .rt-header-tools { display: flex; align-items: center; gap: 8px; }
   .theme-toggle, .rt-text-btn {
     background: none; border: 1px solid var(--rule); color: var(--dim);
     height: 24px; font-size: 10px; cursor: pointer;
     display: grid; place-items: center; padding: 0 10px;
-    border-radius: var(--radius-pill); line-height: 1; flex: 0 0 auto;
+    border-radius: var(--radius-pill); line-height: 1;
     transition: border-color 0.15s, color 0.15s;
     font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase;
     text-decoration: none;
@@ -142,140 +130,70 @@
   .theme-toggle { width: 24px; padding: 0; }
   .theme-toggle:hover, .rt-text-btn:hover { border-color: var(--ink); color: var(--ink); }
 
-  .rt-body { padding: 28px 20px 48px; }
+  .rt-body { padding: 20px 16px 28px; display: flex; flex-direction: column; gap: 16px; }
 
-  .rt-eyebrow {
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--dim); margin-bottom: 14px;
-  }
   h1 {
-    font-family: var(--font-brand); font-weight: 400; font-style: normal;
-    font-size: clamp(28px, 6vw, 40px); line-height: 1.12;
+    font-family: var(--font-brand); font-weight: 400;
+    font-size: clamp(26px, 6vw, 34px); line-height: 1.12;
     letter-spacing: -0.02em; color: var(--ink);
     max-width: 14ch; text-wrap: balance;
   }
-  .lede {
-    color: var(--body); font-size: 16px; max-width: 42ch;
-    margin-top: 14px; line-height: 1.55;
-  }
+  .lede { color: var(--body); font-size: 15px; max-width: 38ch; }
 
-  .cta { margin: 28px 0 0; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+  .cta { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
   .btn {
     display: inline-grid; place-items: center;
     background: var(--riah-brand); color: var(--on-pink);
     font: 500 14px/1 var(--font-sans);
-    letter-spacing: 0.01em;
-    text-decoration: none;
-    padding: 14px 22px;
+    text-decoration: none; padding: 13px 20px;
     border-radius: var(--radius-chip);
-    border: 1px solid transparent;
-    transition: filter 120ms ease, transform 120ms ease;
+    transition: filter 120ms ease;
   }
-  .btn:hover, .btn:focus-visible { filter: brightness(1.08); color: var(--on-pink); transform: translateY(-1px); }
-  .btn:active { transform: translateY(0); }
+  .btn:hover, .btn:focus-visible { filter: brightness(1.08); color: var(--on-pink); }
   .btn:focus-visible { outline: 2px solid var(--riah-brand); outline-offset: 3px; }
   .under {
     color: var(--dim);
-    font-family: var(--font-mono); font-size: 11px;
-    letter-spacing: 0.06em; text-transform: uppercase;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
   }
 
-  .shots {
-    margin: 36px 0 8px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .shots img {
-    width: 100%; height: auto; display: block;
+  .shot {
     border: 1px solid var(--rule-strong);
     border-radius: var(--radius);
+    overflow: hidden;
     background: var(--bg-raised);
     box-shadow: var(--shadow);
   }
-  .shots.single { grid-template-columns: 1fr; }
-  .shots.single img { max-width: 420px; margin: 0 auto; }
+  .shot img { width: 100%; height: auto; display: block; }
 
-  section { padding-top: 48px; }
-  .sec-label {
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--dim);
-    margin-bottom: 10px;
-  }
-  h2 {
-    font-family: var(--font-brand); font-weight: 400;
-    font-size: clamp(22px, 4.5vw, 28px); line-height: 1.2;
-    letter-spacing: -0.015em; color: var(--ink);
-    margin-bottom: 14px;
-  }
-  p { color: var(--body); max-width: 52ch; font-size: 15px; }
-  p + p { margin-top: 12px; }
-  strong { color: var(--ink); font-weight: 600; }
-
-  .steps { list-style: none; counter-reset: step; margin-top: 4px; }
-  .steps li {
-    counter-increment: step;
-    position: relative;
-    color: var(--body);
-    padding: 12px 0 12px 40px;
-    border-bottom: 1px solid var(--rule);
-    max-width: 52ch; font-size: 15px;
-  }
-  .steps li::before {
-    content: counter(step);
-    position: absolute; left: 0; top: 12px;
-    width: 24px; height: 24px;
-    border: 1px solid var(--rule-strong);
-    border-radius: var(--radius-chip);
-    color: var(--dim);
-    font: 400 11px/22px var(--font-mono);
-    text-align: center;
-  }
-  .steps li:last-child { border-bottom: 0; }
-
-  .feature {
-    padding: 16px 0;
+  .points {
+    list-style: none;
     border-top: 1px solid var(--rule);
-    max-width: 52ch;
+    padding-top: 4px;
   }
-  .feature:first-of-type { border-top: 0; padding-top: 0; }
-
-  dl { max-width: 52ch; }
-  dt {
-    color: var(--ink); font-weight: 600; font-size: 15px;
-    padding-top: 16px; border-top: 1px solid var(--rule); margin-top: 16px;
+  .points li {
+    color: var(--body); font-size: 14px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--rule);
   }
-  dl > dt:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
-  dd { color: var(--body); margin-top: 6px; font-size: 15px; }
-
-  .spec {
-    color: var(--dim);
-    font: 400 11px/1 var(--font-mono);
-    letter-spacing: 0.08em; text-transform: uppercase;
-    margin-top: 14px;
-  }
-  .close { padding-top: 8px; }
+  .points strong { color: var(--ink); font-weight: 600; }
 
   .rt-footer {
     margin-top: auto;
-    padding: 18px 20px 28px;
+    padding: 14px 16px 22px;
     border-top: 1px solid var(--rule);
     color: var(--dim);
     font-family: var(--font-mono); font-size: 10px;
     letter-spacing: 0.08em; text-transform: uppercase;
-    display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+    display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
   }
   .rt-footer a {
-    color: var(--dim); text-decoration: none;
+    color: var(--dim);
     border-bottom: 1px solid var(--rule-strong);
   }
   .rt-footer a:hover { color: var(--ink); }
 
   @media (max-width: 560px) {
-    .shots { grid-template-columns: 1fr; }
-    .rt-body { padding: 24px 16px 40px; }
-    .rt-header { padding-left: 16px; padding-right: 16px; }
-    .rt-footer { padding-left: 16px; padding-right: 16px; }
     .rt-regmark, .rt-regmark-cap { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -333,133 +251,36 @@
     </header>
 
     <main class="rt-body">
-      <p class="rt-eyebrow">Where you&rsquo;re already looking</p>
       <h1>The to-do list you&rsquo;ll actually open.</h1>
       <p class="lede">
-        The thing you need to remember sits next to your clock. One click and
-        your day is in front of you. Click away and it&rsquo;s out of your face.
+        One click by your clock. Check something off. Click away and it&rsquo;s
+        out of your face.
       </p>
       <div class="cta">
         <a class="btn" href="https://github.com/RiahStudio/riah-todo/releases/latest">Get Riah To-Do</a>
-        <p class="under">Free, and running in about a minute.</p>
+        <p class="under">Free, and running in about a minute</p>
       </div>
 
-      <div class="shots" role="group" aria-label="Riah To-Do screenshots">
-        <img src="screenshots/note-dark.png" width="520" height="680"
-             alt="Riah To-Do — the note open: four tasks left of six, steps nested under Ship the Gumroad listing, Tomorrow and Later groups below." />
-        <img src="screenshots/note-scrolling.png" width="520" height="680"
-             alt="Riah To-Do — the same note shorter, with a longer list scrolling inside and a slim bar on the right." />
+      <div class="shot">
+        <img src="screenshots/note-dark.png" width="1280" height="800"
+             alt="Riah To-Do open on a Windows desktop, sitting above the clock with today&rsquo;s nested tasks." />
+      </div>
+      <div class="shot">
+        <img src="screenshots/note-scrolling.png" width="1280" height="800"
+             alt="Riah To-Do shortened on the same desktop, a longer list scrolling inside the note." />
       </div>
 
-      <section>
-        <p class="sec-label">The problem</p>
-        <h2>Twenty apps. Opened twice.</h2>
-        <p>
-          We all want to be organized. We&rsquo;ve all downloaded twenty different
-          to-do apps to prove it.
-        </p>
-        <p>
-          And most of us never opened one of them twice. Not because we stopped
-          caring, but because opening it was a chore. Another window, another tab,
-          another thing to go and find.
-        </p>
-        <p>
-          So the list goes stale inside a week, and your whole day moves back into
-          your head.
-        </p>
-      </section>
-
-      <section>
-        <p class="sec-label">The thing</p>
-        <h2>It&rsquo;s already in your line of sight.</h2>
-        <p>
-          Click the icon by your tray. Today&rsquo;s list is right there, where you
-          left it. Check something off. Click away and it&rsquo;s gone.
-        </p>
-        <p>
-          Nothing to leave open. Nothing to configure. That&rsquo;s why you&rsquo;ll
-          still be using it in March.
-        </p>
-      </section>
-
-      <section>
-        <p class="sec-label">How it works</p>
-        <h2>About a minute.</h2>
-        <ol class="steps">
-          <li>Download it and drop the folder wherever you like.</li>
-          <li>Double-click Start Riah To-Do.</li>
-          <li>An icon appears by your clock. Click it and start typing.</li>
-        </ol>
-      </section>
-
-      <section>
-        <p class="sec-label">What it does</p>
-        <h2>Only what&rsquo;s left.</h2>
-
-        <div class="feature">
-          <p>
-            <strong>Checked-off tasks clear themselves.</strong> Two hours after you
-            check something off, it leaves the list (adjustable, of course).
-            What&rsquo;s in front of you is only ever what&rsquo;s actually left.
-          </p>
-        </div>
-
-        <div class="feature">
-          <p>
-            <strong>Everything you finish lands in your Obsidian vault.</strong>
-            Point it at your second brain and each day writes itself into a dated
-            note, steps indented under their task.
-          </p>
-        </div>
-
-        <div class="feature">
-          <p>
-            <strong>Nothing gets lost overnight.</strong> Whatever you didn&rsquo;t
-            finish is waiting for you tomorrow.
-          </p>
-        </div>
-
-        <div class="feature">
-          <p>
-            <strong>Break a job into steps when you need to.</strong> Nest them as
-            deep as the work goes. Drag to reorder. It stays where you put it.
-          </p>
-        </div>
-      </section>
-
-      <section>
-        <p class="sec-label">Usual questions</p>
-        <h2>Straight answers.</h2>
-        <dl>
-          <dt>Is my list private?</dt>
-          <dd>
-            It&rsquo;s one small JSON file on your own PC and it stays there. Nothing
-            to sign up for, nothing sent anywhere.
-          </dd>
-
-          <dt>Am I locked in?</dt>
-          <dd>No. Your whole list is that one file. Copy it and you&rsquo;ve got everything.</dd>
-
-          <dt>Do I need to install a pile of stuff first?</dt>
-          <dd>No. It runs on what Windows already ships with.</dd>
-        </dl>
-      </section>
-
-      <section>
-        <p class="sec-label">Price</p>
-        <h2>Free. Yours to keep.</h2>
-        <p>MIT licensed.</p>
-        <div class="cta close">
-          <a class="btn" href="https://github.com/RiahStudio/riah-todo/releases/latest">Get Riah To-Do</a>
-          <p class="spec">Windows 10 and 11</p>
-        </div>
-      </section>
+      <ul class="points">
+        <li><strong>Checked-off tasks clear themselves</strong> (adjustable) and can land in your Obsidian vault.</li>
+        <li><strong>Unfinished work waits for tomorrow.</strong> Nothing to configure.</li>
+        <li><strong>One JSON file on your PC.</strong> Free, MIT, Windows 10 and 11.</li>
+      </ul>
     </main>
 
     <footer class="rt-footer">
       <span>Riah Studio</span>
       <a href="https://github.com/RiahStudio/riah-todo">GitHub</a>
-      <a href="https://github.com/RiahStudio/riah-todo/blob/main/LICENSE">MIT License</a>
+      <a href="https://github.com/RiahStudio/riah-todo/blob/main/LICENSE">MIT</a>
     </footer>
   </div>
 
