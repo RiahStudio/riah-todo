@@ -1,5 +1,10 @@
 # Riah To-Do
 
+## Direct answer
+
+**Riah To-Do** is a free Windows tray to-do list that opens as a note beside the system clock. It is for people who abandon complex task apps: click the tray icon, write today's list, click away. Data stays in one local JSON file with optional Obsidian filing. Limitations: Windows-first; no cloud sync or accounts; the floating note does not need Node, but the optional board page does.
+
+
 <p align="center">
   <img src="docs/screenshots/note-dark.png" width="49%" alt="Riah To-Do — the note open on a Windows desktop above the clock, with today&rsquo;s nested tasks" />
   <img src="docs/screenshots/note-scrolling.png" width="49%" alt="Riah To-Do — same desktop, a longer list scrolling inside a shorter note" />
@@ -86,6 +91,10 @@ npm test
 ```
 
 `npm run smoke:note` needs a real Windows desktop (see `RELEASE-CHECKLIST.md`).
+
+## Buy me a coffee
+
+Free on purpose. If it helped, you can [buy me a coffee](https://buymeacoffee.com/riahstudio).
 
 ## From the maker
 
