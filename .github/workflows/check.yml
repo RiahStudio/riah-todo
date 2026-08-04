@@ -1,9 +1,8 @@
-# The part of Riah To-Do a CI machine can honestly test.
+# CI for Riah To-Do — Node tests a runner can actually run.
 #
-# The real tray note needs an interactive Windows desktop to draw itself, which
-# a runner does not have — so `smoke:note` and `smoke:guard` are NOT run here.
-# They are a release-machine gate, documented in RELEASE-CHECKLIST.md. Pretending
-# CI covers them would be worse than admitting it does not.
+# The tray note needs a real Windows desktop to draw itself, which a runner
+# does not have, so smoke:note and smoke:guard stay off this workflow. Those
+# are a release-machine gate in RELEASE-CHECKLIST.md. CI covers the rest.
 name: check
 
 on:

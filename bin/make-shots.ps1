@@ -17,7 +17,6 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $DESK   = [System.Drawing.Color]::FromArgb(32, 36, 44)
 $BAR    = [System.Drawing.Color]::FromArgb(24, 26, 30)
 $BARLINE= [System.Drawing.Color]::FromArgb(55, 58, 66)
-$ICON   = [System.Drawing.Color]::FromArgb(70, 74, 84)
 $CLOCK  = [System.Drawing.Color]::FromArgb(200, 202, 208)
 $PINK   = [System.Drawing.Color]::FromArgb(255, 92, 168)
 $INK    = [System.Drawing.Color]::FromArgb(237, 237, 239)
@@ -61,17 +60,28 @@ function New-Desktop([int]$w, [int]$h) {
   $g.FillRectangle($bg, 0, 0, $w, $h)
   $bg.Dispose()
 
-  # Quiet desktop icons on the left - enough to read as a real desk.
-  $ib = New-Object System.Drawing.SolidBrush($ICON)
+  # Real desktop icons on the left — Claude / ChatGPT / Cursor art, not grey boxes.
+  $iconDir = Join-Path $Repo 'docs\screenshots\icons'
+  $deskIcons = @(
+    @{ Label = 'Claude';  File = 'claude.png' },
+    @{ Label = 'ChatGPT'; File = 'chatgpt.png' },
+    @{ Label = 'Cursor';  File = 'cursor.png' }
+  )
   $fIcon = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Regular)
   $tb = New-Object System.Drawing.SolidBrush($CLOCK)
-  $labels = @('Claude', 'ChatGPT', 'Cursor')
-  for ($i = 0; $i -lt 3; $i++) {
+  $sf = New-Object System.Drawing.StringFormat
+  $sf.Alignment = [System.Drawing.StringAlignment]::Center
+  for ($i = 0; $i -lt $deskIcons.Count; $i++) {
     $ix = 48; $iy = 48 + ($i * 110)
-    $g.FillRectangle($ib, $ix, $iy, 48, 48)
-    $g.DrawString($labels[$i], $fIcon, $tb, ($ix - 4), ($iy + 54))
+    $iconPath = Join-Path $iconDir $deskIcons[$i].File
+    if (-not (Test-Path $iconPath)) { throw "missing desktop icon: $iconPath" }
+    $img = [System.Drawing.Image]::FromFile($iconPath)
+    $g.DrawImage($img, $ix, $iy, 48, 48)
+    $img.Dispose()
+    $labelRect = New-Object System.Drawing.RectangleF(($ix - 12), ($iy + 52), 72, 28)
+    $g.DrawString($deskIcons[$i].Label, $fIcon, $tb, $labelRect, $sf)
   }
-  $ib.Dispose(); $fIcon.Dispose(); $tb.Dispose()
+  $fIcon.Dispose(); $tb.Dispose(); $sf.Dispose()
 
   # Taskbar + clock (where the tray icon lives).
   $barH = 48

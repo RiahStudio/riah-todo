@@ -5,16 +5,15 @@
   <img src="docs/screenshots/note-scrolling.png" width="49%" alt="Riah To-Do — same desktop, a longer list scrolling inside a shorter note" />
 </p>
 
-**Free.** Today's list as a note by the Windows clock. Click the tray icon, tick things off, click away and it's gone. Drag it where you want. Nothing to leave open, no window to hunt for.
+**The to-do list you'll actually open.**
 
-The list is **one JSON file**. No server, no background service, no account. Your list stays on your machine.
+It sits by the Windows clock. Click the tray icon, write today's list, click away.
 
-## Requirements
+We all want to be organized. We've all downloaded twenty different to-do apps to prove it. And most of us never opened one of them twice. Not because we stopped caring, but because opening it was a chore.
 
-- **Windows** 10 or 11 (PowerShell 5.1 ships with Windows — nothing else to install for the note)
-- **Node.js** 18+ is optional — only for the board page and the AI tools. The note never needs it.
+This one lives where you already look. Checked-off tasks clear themselves, and land in your Obsidian vault (adjustable, of course). It's one small JSON file on your own PC.
 
-No accounts with us. No sync. No telemetry.
+**Free, and running in about a minute.**
 
 ## Quick start
 
@@ -25,6 +24,13 @@ No accounts with us. No sync. No telemetry.
 An icon appears by the clock. Click it.
 
 To stop later: **`Stop Riah To-Do.bat`**. For every morning: put a shortcut to `Start Riah To-Do.bat` in `shell:startup`.
+
+## Requirements
+
+- **Windows** 10 or 11 (PowerShell 5.1 ships with Windows — nothing else to install for the note)
+- **Node.js** 18+ is optional — only for the board page and the AI tools. The note never needs it.
+
+No accounts with us. No sync. No telemetry.
 
 ## System tray (Windows)
 
@@ -50,7 +56,7 @@ The icon is the status: one bar per item, green once ticked, and a single green 
 | Type at the bottom, Enter | Adds an item |
 | Hover a row, click the `x` | Removes it |
 
-Ticking a task ticks its whole thread. Unfinished work carries over tomorrow. Ticked items leave the list after two hours by default (adjustable) and can also land in an Obsidian vault — right-click the tray → **Settings**.
+Ticking a task ticks its whole thread. Unfinished work carries over tomorrow. Checked-off tasks leave the list after two hours by default (adjustable) and can also land in an Obsidian vault — right-click the tray → **Settings**.
 
 ## The board
 
