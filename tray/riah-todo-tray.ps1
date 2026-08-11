@@ -87,6 +87,7 @@ namespace RiahTodo {
     public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr handle);
+    [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
@@ -949,14 +950,39 @@ $C = @{
   Hot    = [System.Drawing.Color]::FromArgb(242, 109, 91)
   Brand  = [System.Drawing.Color]::FromArgb(255, 92, 168)
 }
+
+# Real brand fonts: the package ships Instrument Serif / Space Grotesk /
+# Space Mono as .woff2 (web format) PLUS .ttf (added 2026-08-09) in
+# assets/fonts/. WinForms cannot load .woff2, so this used Georgia / Segoe UI /
+# Consolas stand-ins before. A PrivateFontCollection loads the TTFs privately --
+# no system-wide font install needed, and it looks the same on Win10 and Win11.
+$script:FontDir = Join-Path $script:Root 'assets\fonts'
+$script:FontCache = $null
+function Get-TrayFont([string]$family, [single]$size, [System.Drawing.FontStyle]$style) {
+  try {
+    if (-not $script:FontCache) {
+      $script:FontCache = New-Object System.Drawing.Text.PrivateFontCollection
+      $ttfs = @(Get-ChildItem -LiteralPath $script:FontDir -Filter '*.ttf' -ErrorAction SilentlyContinue)
+      foreach ($t in $ttfs) { $script:FontCache.AddFontFile($t.FullName) }
+    }
+    foreach ($f in $script:FontCache.Families) {
+      if ($f.Name -ieq $family) { return New-Object System.Drawing.Font($f, $size, $style) }
+    }
+  } catch { }
+  # Fallback stand-ins, so a missing font file never blanks the tray.
+  $fallback = @{ 'Instrument Serif' = 'Georgia'; 'Space Grotesk' = 'Segoe UI'; 'Space Mono' = 'Consolas' }
+  $sys = $fallback[$family]
+  if (-not $sys) { $sys = 'Segoe UI' }
+  return New-Object System.Drawing.Font($sys, $size, $style)
+}
 $F = @{
-  Brand = New-Object System.Drawing.Font('Georgia', 14, ([System.Drawing.FontStyle]::Italic))
-  Product = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Regular)
-  Row   = New-Object System.Drawing.Font('Segoe UI', 10.5)
-  RowDone = New-Object System.Drawing.Font('Segoe UI', 10.5, [System.Drawing.FontStyle]::Strikeout)
-  Meta  = New-Object System.Drawing.Font('Consolas', 8)
-  Count = New-Object System.Drawing.Font('Segoe UI', 18, [System.Drawing.FontStyle]::Bold)
-  Kill  = New-Object System.Drawing.Font('Segoe UI', 11)
+  Brand = Get-TrayFont 'Instrument Serif' 14 ([System.Drawing.FontStyle]::Italic)
+  Product = Get-TrayFont 'Space Grotesk' 12 ([System.Drawing.FontStyle]::Regular)
+  Row   = Get-TrayFont 'Space Grotesk' 10.5 ([System.Drawing.FontStyle]::Regular)
+  RowDone = Get-TrayFont 'Space Grotesk' 10.5 ([System.Drawing.FontStyle]::Strikeout)
+  Meta  = Get-TrayFont 'Space Mono' 8 ([System.Drawing.FontStyle]::Regular)
+  Count = Get-TrayFont 'Space Grotesk' 18 ([System.Drawing.FontStyle]::Bold)
+  Kill  = Get-TrayFont 'Space Grotesk' 11 ([System.Drawing.FontStyle]::Regular)
 }
 
 # Bigger and longer than the meters box: this one is read and clicked, not
@@ -1498,6 +1524,16 @@ $popup.KeyPreview = $true
 $db = $popup.GetType().GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic')
 if ($db) { $db.SetValue($popup, $true, $null) }
 [void]$popup.Handle
+# Win11 rounded corners (DWMWA_WINDOW_CORNER_PREFERENCE=33, round=2).
+# No-op on Win10 -- the attribute does not exist there, so the call fails
+# silently and the form keeps its square corners. Guarded so a failure
+# never stops the tray from showing.
+if ($script:HasNative) {
+  try {
+    $pref = 2
+    [void][RiahTodo.Native]::DwmSetWindowAttribute($popup.Handle, 33, [ref]$pref, 4)
+  } catch {}
+}
 Load-Geometry
 
 
