@@ -123,7 +123,7 @@ if (steps.length !== 2) {
 }
 // "Step two" was dragged above "Step one" through the real pointer path, so it
 // leads its task's steps while "Step one" keeps its own sub-thread underneath.
-// Captain, 2026-07-29: dragging a step above its sibling appeared to do nothing.
+// Regression: dragging a step above its sibling appeared to do nothing.
 const expectedOrder = [
   "Added by the note", "Step two", "Step one", "Deeper still", "Deepest of all",
 ];
@@ -156,7 +156,7 @@ if (!thread.every((item) => item?.completed)) {
 // --- auto-filing, with a vault trail ---
 // Second pass: turn the window down to nothing and point it at a vault. On the
 // next start the note should file everything ticked and leave a dated markdown
-// trail behind — the thing Captain actually asked for.
+// trail behind — the point of the feature.
 writeFileSync(path.join(dir, "settings.json"), JSON.stringify({
   fileAfterMinutes: 0,
   vaultPath: vault,

@@ -48,7 +48,7 @@ test("a subtask sits directly under its task, whatever order the file is in", ()
 
 test("a thread can keep nesting, and each item knows how deep it is", () => {
   scratch();
-  // Captain, 2026-07-29: sub-threads under sub-points are fine — the widget resizes.
+  // Sub-threads under sub-points are fine — the widget resizes.
   let list = ops.add("Ship the launch");
   let parentId = list.items[0].id;
   const labels = ["Write the email", "Draft the subject", "Try a shorter one", "Ask Zach"];

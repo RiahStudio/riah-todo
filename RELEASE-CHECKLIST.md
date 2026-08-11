@@ -73,7 +73,7 @@ shell.
 
 ## Suggested repository topics
 
-Prepared, **not applied** — setting them is Captain's call:
+Applied at launch (kept here for the record):
 
 `todo` · `windows` · `tray` · `system-tray` · `productivity` · `powershell` ·
 `nodejs` · `mcp` · `local-first` · `no-cloud`
@@ -105,10 +105,9 @@ Prepared, **not applied** — setting them is Captain's call:
 - [x] `repo-map.mjs write` run — the map now lists riah-todo as public
 - [x] Both **Get Riah To-Do** buttons resolve to the release
 
-Still open, and all Captain's call:
-- [ ] Keep or trim the studio commentary in the source. Riah Usage ships public
-      with the same voice, so the recommendation is **keep** — it is honest
-      engineering history, and no path in it is secret.
+- [x] Studio commentary trimmed to neutral voice (2026-08-11): the design
+      constraints and their reasons stay; dated attributions, personal quotes,
+      and machine-specific paths are gone.
 
 ## v1.0.1 — 2026-08-01
 

@@ -1,7 +1,7 @@
 # Riah To-Do tray -- today's list by the clock. Windows only, zero installs.
 #
-# CLICK, never hover. (Captain, 2026-07-28: "I don't want it to be hover-to-pop-up.
-# I want it to be click-to-pop-up.") Hovering the icon does nothing at all.
+# CLICK, never hover — hover-to-pop-up was rejected out of hand. Hovering the
+# icon does nothing at all.
 #
 # Left-click icon : opens the note in the TOP-RIGHT corner of the screen.
 # Click anywhere out: it goes away, and stays away until the icon is clicked again.
@@ -130,8 +130,8 @@ if ($script:HasNative) { try { $script:DpiAware = [RiahTodo.Native]::SetProcessD
 
 # --- the list on disk (same file Riah Code and the board use) ---
 # Backstops against a runaway paste, not a rule about how many things a person
-# may have on today. (Captain, 2026-07-29: "we absolutely should not have a
-# 12-task limit".) Matches lib/store.mjs.
+# may have on today — a small daily cap was rejected outright. Matches
+# lib/store.mjs.
 $script:MaxItems = 100
 $script:MaxSubtasks = 100
 # 0 is a top-level task, so six levels. Matches MAX_DEPTH in lib/store.mjs.
@@ -285,7 +285,7 @@ function Read-Store {
         # rest are gone for real. The empty-write guard never saw this because
         # three of twelve is not empty. Treat any shortfall as unreadable, which
         # blocks every write until a clean read replaces it.
-        # (Captain, 2026-07-29 23:15: twelve tasks on disk, three on the note.)
+        # (Seen live: twelve tasks on disk, three on the note.)
         $rawCount = @($j.items).Count
         if ($items.Count -lt $rawCount) {
           $script:ListUnreadable = $true
@@ -596,7 +596,7 @@ function Add-VaultTrail($removed) {
     [System.IO.File]::AppendAllText($file, $lines, (New-Object System.Text.UTF8Encoding($false)))
     Write-TrayLog ('vault_trail ' + $file + ' +' + @($removed).Count)
   } catch {
-    # A vault that moved or is offline must never cost Captain a tick.
+    # A vault that moved or is offline must never cost the owner a tick.
     Write-TrayLog ('vault_trail_fail ' + $_.Exception.Message)
   }
 }
@@ -696,8 +696,8 @@ function Sync-List([bool]$force = $false) {
 }
 
 # Duplicate labels are ALLOWED. The same job under two different tasks is two
-# different jobs. (Captain, 2026-07-29: "post on socials" under Gumroad Shovels
-# AND under Riah To-Do -- refusing that was obnoxious.)
+# different jobs -- "post on socials" under two launches at once is legitimate,
+# and refusing it was obnoxious.
 
 function Set-Flash([string]$msg) {
   $script:Flash = $msg
@@ -881,7 +881,7 @@ function Remove-PriorityUnlocked([string]$id) {
   $script:AllowEmptyWrite = $true
   $keep = New-Object System.Collections.ArrayList
   # A task takes its WHOLE thread with it, however deep -- leaving descendants
-  # behind would silently promote work Captain thought he had just deleted.
+  # behind would silently promote work you thought you had just deleted.
   $doomed = @{}
   $doomed[[string]$id] = $true
   foreach ($kid in @(Get-Descendants $id)) { $doomed[[string]$kid.id] = $true }
@@ -986,7 +986,7 @@ $F = @{
 }
 
 # Bigger and longer than the meters box: this one is read and clicked, not
-# glanced at. (Captain, 2026-07-28.)
+# glanced at.
 $DEF_W = 380
 $MIN_W = 260
 $MAX_W = 900
@@ -1020,7 +1020,7 @@ $CORNER = 14
 $script:Rows = @()
 # Scrolling. The note grows as the list grows, but a long list eventually meets
 # the edge of the screen -- and a note you cannot shrink is worse than a short
-# one. Past that point the rows scroll inside whatever height Captain chose.
+# one. Past that point the rows scroll inside whatever height you chose.
 $script:ScrollY = 0
 $script:ContentBottom = 0
 $script:ViewTop = 0
@@ -1043,7 +1043,7 @@ $script:BackRect = $null
 $script:HiddenAt = $script:LongAgo
 $script:IconHandle = [IntPtr]::Zero
 $script:LastPlace = ''
-# Geometry Captain chose by dragging. Null means "not placed yet".
+# Geometry the owner chose by dragging. Null means "not placed yet".
 $script:WinW = $DEF_W
 $script:UserPos = $null
 $script:UserMinH = 0
@@ -1066,7 +1066,7 @@ $script:HoverPlus = $false
 
 function Get-Indent([int]$depth) {
   # The first step in is full width; deeper ones narrow, so a six-level thread
-  # still leaves the words room on a small note. Captain can widen it anyway.
+  # still leaves the words room on a small note. You can widen it anyway.
   if ($depth -le 0) { return 0 }
   $indent = $THREAD_INDENT
   for ($d = 2; $d -le $depth; $d++) {
@@ -1290,7 +1290,7 @@ function Clamp-ToScreen($scr, [int]$x, [int]$y, [int]$w, [int]$h) {
 }
 
 function Load-Geometry {
-  # Where Captain last dragged it to, and how big he made it. A half-written or
+  # Where the note was last dragged to, and how big it was made. A half-written or
   # empty file means "not placed yet", never 0,0.
   try {
     $script:UserPos = $null
@@ -1330,9 +1330,9 @@ function Clear-Geometry([string]$why) {
 }
 
 function Place-Popup {
-  # Where Captain put it wins. Until he has put it anywhere, the top-right corner
+  # Where you put it wins. Until it has been placed anywhere, the top-right corner
   # of the screen holding the tray icon -- so the first open lands on the monitor
-  # he just clicked on, not always the main one.
+  # just clicked on, not always the main one.
   $contentH = Measure-Height
   $icon = Get-IconRectRaw
   $scr = $null
@@ -1355,12 +1355,10 @@ function Place-Popup {
   }
   $wa = $scr.WorkingArea
 
-  # Until Captain drags an edge, the note grows with the list -- that part he
-  # likes. Once he has set a height, that IS the height and the list scrolls
-  # inside it. It used to be treated as a floor, which meant a long list could
-  # not be pulled back down to something small. (Captain, 2026-07-29: "I should
-  # just be able to make it smaller anytime I want because I'm going to get a
-  # lot of things on there.")
+  # Until you drag an edge, the note grows with the list -- the good part. Once
+  # a height is set, that IS the height and the list scrolls inside it. It used
+  # to be treated as a floor, which meant a long list could not be pulled back
+  # down to something small -- you must be able to make it smaller at any time.
   if ($script:UserHSet -and $script:UserMinH -gt 0) {
     $winH = [Math]::Min([Math]::Max($script:UserMinH, 140), $wa.Height)
   } else {
@@ -1450,9 +1448,8 @@ function Dismiss-Note {
   $script:PopupOpen = $false
   $script:HiddenAt = Get-Date
   # Deliberately NOT Reset-AddBox: closing the note to copy something and coming
-  # back must not dump you at the top level. (Captain, 2026-07-29: clicking out
-  # "automatically defaults you to starting one thread on the top level, which
-  # seems like it is going to annoy some people.") Clear only the typed text.
+  # back must not dump you at the top level -- an auto-reset to the top thread
+  # would annoy anyone mid-flow. Clear only the typed text.
   $addBox.Text = Get-AddHint
   $addBox.ForeColor = $C.Faint
   try { $popup.Hide() } catch {}
@@ -1603,8 +1600,7 @@ function Layout-AddBox {
 
 # --- editing a priority in place ---
 # Click the words and they become an editable line, right where they are. No
-# menu, no separate field at the bottom. (Captain, 2026-07-28: "the equivalent of
-# Riah's social manager, where you just click in it and it's an automatic edit.")
+# menu, no separate field at the bottom -- click in place, edit in place.
 $editBox = New-Object System.Windows.Forms.TextBox
 $editBox.BorderStyle = 'None'
 $editBox.BackColor = $C.Row
@@ -1869,7 +1865,7 @@ $script:PaintNote = {
 
   # The row you are holding, lifted and following the pointer. A drop line alone
   # tells you where it will land but not that you are carrying anything.
-  # (Captain, 2026-07-29: "it would be nice if it kind of dragged with you".)
+  # The row should feel like it drags with you.
   if ($script:RowDragId -and $script:RowDragArmed) {
     $held = $null
     foreach ($r in $script:Rows) { if ($r.id -eq $script:RowDragId) { $held = $r; break } }
@@ -1951,7 +1947,7 @@ $script:PaintNote = {
   }
 
   # Empty means empty. The box below already says "Add a priority"; saying it
-  # twice in a fuller sentence was overexplaining. (Captain, 2026-07-29.)
+  # twice in a fuller sentence was overexplaining.
 
   # Add box chrome (the real TextBox sits inside this rectangle)
   Layout-AddBox
@@ -1971,7 +1967,7 @@ $script:PaintNote = {
     $bBack.Dispose()
   }
 
-  # No standing hint line: Captain asked for the explanation at the bottom to go.
+  # No standing hint line -- the explanation at the bottom was deliberately cut.
   # The only thing that appears down here is a refusal, and only while it matters.
   if ($script:Flash -and (Get-Date) -lt $script:FlashUntil) {
     $flashBrush = New-Object System.Drawing.SolidBrush($C.Hot)
@@ -2081,8 +2077,7 @@ function Get-DropTarget([System.Drawing.Point]$pt) {
   # Which row the dragged one would land above. Past the last one means the end.
   #
   # A row reorders among ITS OWN SIBLINGS -- tasks among tasks, and a step among
-  # the steps of the same task. (Captain, 2026-07-29: "any sub thread needs to be
-  # able to be dragged and dropped within the sub thread as well.") Dragging a
+  # the steps of the same task -- a sub-thread reorders within itself. Dragging a
   # step out of its thread is a re-parent, which is a different gesture.
   $script:DropBeforeId = $null
   $script:DropAtEnd = $false
@@ -2473,7 +2468,7 @@ $awayTimer.add_Tick({
 $fileTimer = New-Object System.Windows.Forms.Timer
 $fileTimer.Interval = 1500
 $fileTimer.add_Tick({
-  # Never re-lay-out the rows while Captain is typing into one of them.
+  # Never re-lay-out the rows while someone is typing into one of them.
   if ($script:EditId) { return }
 
   # A newer copy of this script on disk is an update. Take it while the note is
@@ -2542,7 +2537,7 @@ function Test-ShotHasContent($bmp) {
 }
 
 if ($script:ShotPath) {
-  # Draw the note exactly as Captain would see it and write it to a file, so the
+  # Draw the note exactly as the user would see it and write it to a file, so the
   # look can be checked without anyone driving the mouse.
   $shotTimer = New-Object System.Windows.Forms.Timer
   $shotTimer.Interval = 700
@@ -2588,7 +2583,7 @@ if ($script:ShotPath) {
           $top = @(Get-TopLevel)[0]
           if ($top -and $top.id -ne $host2.id) { Move-Before $host2.id $top.id }
 
-          # A step must reorder among its OWN steps. Captain, 2026-07-29:
+          # A step must reorder among its OWN steps. Regression:
           # dragging "Make the songs" above "Tiktok vid" did nothing. This drives
           # the real pointer path -- Get-DropTarget on real row geometry, then
           # the same call MouseUp makes -- not just Move-Before on its own.
@@ -2619,9 +2614,8 @@ if ($script:ShotPath) {
         }
 
         # Scrolling. A list longer than the note must scroll inside it, the note
-        # must keep the height Captain chose, and the top row must never be cut
-        # off. (Captain, 2026-07-29: "The very top item clips when we hit
-        # maximum ... I should just be able to make it smaller anytime I want.")
+        # must keep the height the owner chose, and the top row must never be
+        # cut off -- the top item used to clip at maximum height.
         $fillers = New-Object System.Collections.ArrayList
         for ($n = 1; $n -le 24; $n++) {
           $fillLabel = 'Filler ' + $n

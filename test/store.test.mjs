@@ -17,7 +17,7 @@ import {
   writeSettings,
 } from "../lib/store.mjs";
 
-// Every test gets its own file so a failure can never touch Captain's real list.
+// Every test gets its own file so a failure can never touch a real list.
 function scratch() {
   const dir = mkdtempSync(path.join(os.tmpdir(), "riah-todo-"));
   process.env.RIAH_TODO_FILE = path.join(dir, "today.json");
@@ -55,8 +55,8 @@ test("adding, ticking, renaming, and removing all survive a round trip", () => {
 
 test("the same wording is allowed twice — under different tasks it is different work", () => {
   scratch();
-  // Captain, 2026-07-29: "post on socials" under Gumroad Shovels AND under
-  // Riah To-Do. Refusing the second was obnoxious, so this used to throw.
+  // The same label may live under two different parents at once. Refusing
+  // the second was obnoxious, so this used to throw.
   const a = ops.add("Ship the launch").items[0];
   const b = ops.add("Riah To-Do").items[1];
   ops.add("Post on socials", { parentId: a.id });

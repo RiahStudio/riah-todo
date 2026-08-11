@@ -1,12 +1,13 @@
-# Marketing images for Riah To-Do.
+﻿# Marketing images for Riah To-Do.
 #
 # The note is rendered by its own paint code at 2x, then composed onto a
 # desktop backdrop (taskbar + clock), same idea as Riah Usage's tray shot.
 # Nothing here redraws a lookalike: what you see is the app.
 param(
-  [string]$Repo = 'C:\Code\Claude Cowork\Riah To-Do'
+  [string]$Repo = ''
 )
 $ErrorActionPreference = 'Stop'
+if (-not $Repo) { $Repo = Split-Path -Parent $PSScriptRoot }
 Add-Type -AssemblyName System.Drawing
 
 $work = Join-Path $env:TEMP ('riah-todo-shots-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -60,12 +61,12 @@ function New-Desktop([int]$w, [int]$h) {
   $g.FillRectangle($bg, 0, 0, $w, $h)
   $bg.Dispose()
 
-  # Real desktop icons on the left — Claude / ChatGPT / Cursor art, not grey boxes.
+  # Real desktop icons on the left — Claude / Cursor / Codex art, not grey boxes.
   $iconDir = Join-Path $Repo 'docs\screenshots\icons'
   $deskIcons = @(
-    @{ Label = 'Claude';  File = 'claude.png' },
-    @{ Label = 'ChatGPT'; File = 'chatgpt.png' },
-    @{ Label = 'Cursor';  File = 'cursor.png' }
+    @{ Label = 'Claude'; File = 'claude.png' },
+    @{ Label = 'Cursor'; File = 'cursor.png' },
+    @{ Label = 'Codex';  File = 'codex.png' }
   )
   $fIcon = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Regular)
   $tb = New-Object System.Drawing.SolidBrush($CLOCK)
@@ -219,3 +220,4 @@ Copy-Item $noteA $bare -Force
 Write-Host ('  saved note-2x.png  ' + [int]((Get-Item $bare).Length / 1KB) + ' KB')
 
 Write-Host ('Done. ' + $out)
+

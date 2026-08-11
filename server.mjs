@@ -1,7 +1,7 @@
 // Riah To-Do — the board.
 //
 // Optional. The tray sticky note talks straight to the file, so nothing here
-// needs to be running for Captain to tick something off. This server exists so
+// needs to be running for a tick to land. This server exists so
 // the same list can be opened as a full page (and so a phone on the LAN could
 // read it later without a rewrite).
 
@@ -44,7 +44,7 @@ function sendJson(res, status, body) {
  *
  * A loopback server is reachable by every site the browser has open. Without
  * this, `fetch("http://127.0.0.1:8779/api/add", {method:"POST", body:...})` from
- * any page rewrites Captain's list — proved on 2026-07-29 with a `text/plain`
+ * any page rewrites the list — proved with a `text/plain`
  * POST carrying a foreign Origin, which sails past CORS preflight entirely
  * because it is a "simple request".
  *
@@ -208,7 +208,7 @@ const server = http.createServer((req, res) => {
   if (urlPath.startsWith("/api/")) {
     handleApi(req, res, urlPath).catch((error) => {
       // A rejected change is a message, not a stack trace: the board shows this
-      // text straight to Captain.
+      // text straight to the user.
       sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
     });
     return;
