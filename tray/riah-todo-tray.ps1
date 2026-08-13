@@ -1,6 +1,6 @@
 # Riah To-Do tray -- today's list by the clock. Windows only, zero installs.
 #
-# CLICK, never hover — hover-to-pop-up was rejected out of hand. Hovering the
+# CLICK, never hover -- hover-to-pop-up was rejected out of hand. Hovering the
 # icon does nothing at all.
 #
 # Left-click icon : opens the note in the TOP-RIGHT corner of the screen.
@@ -154,7 +154,7 @@ if (-not $script:DpiAware -and $script:HasNative) {
 
 # --- the list on disk (same file Riah Code and the board use) ---
 # Backstops against a runaway paste, not a rule about how many things a person
-# may have on today — a small daily cap was rejected outright. Matches
+# may have on today -- a small daily cap was rejected outright. Matches
 # lib/store.mjs.
 $script:MaxItems = 100
 $script:MaxSubtasks = 100
