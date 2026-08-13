@@ -34,23 +34,24 @@ function Item($id, $label, $parent, $done, $section) {
             section = $section }
 }
 
-function Invoke-Poster([string]$store, [string]$png, [int]$w, [int]$h, [int]$scale) {
+function Invoke-Poster([string]$store, [string]$png, [int]$w, [int]$h, [int]$scale, [string]$iconPng) {
   $env:RIAH_TODO_FILE = $store
   $env:RIAH_TODO_TRAY_SHOT = (Join-Path $work ('raw-' + [IO.Path]::GetFileName($png)))
   $env:RIAH_TODO_TRAY_POSTER = $png
   $env:RIAH_TODO_TRAY_POSTER_W = $w
   $env:RIAH_TODO_TRAY_POSTER_H = $h
   $env:RIAH_TODO_TRAY_POSTER_SCALE = $scale
+  if ($iconPng) { $env:RIAH_TODO_TRAY_ICON = $iconPng }
   $r = & powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File (Join-Path $Repo 'tray\riah-todo-tray.ps1') 2>&1
   Remove-Item Env:RIAH_TODO_TRAY_POSTER, Env:RIAH_TODO_TRAY_POSTER_W, Env:RIAH_TODO_TRAY_POSTER_H,
-    Env:RIAH_TODO_TRAY_POSTER_SCALE, Env:RIAH_TODO_TRAY_SHOT -ErrorAction SilentlyContinue
+    Env:RIAH_TODO_TRAY_POSTER_SCALE, Env:RIAH_TODO_TRAY_SHOT, Env:RIAH_TODO_TRAY_ICON -ErrorAction SilentlyContinue
   $line = ($r | Select-String 'TRAY_POSTER_OK|TRAY_NOTE_FAILED' | Select-Object -First 1)
   if (-not $line) { throw ("no poster came back: " + ($r -join ' ')) }
   Write-Host ('  ' + $line)
   if (-not (Test-Path $png)) { throw "poster missing at $png" }
 }
 
-function New-Desktop([int]$w, [int]$h) {
+function New-Desktop([int]$w, [int]$h, [string]$trayIcon) {
   $bmp = New-Object System.Drawing.Bitmap($w, $h)
   $g = [System.Drawing.Graphics]::FromImage($bmp)
   $g.SmoothingMode = 'AntiAlias'
@@ -98,64 +99,60 @@ function New-Desktop([int]$w, [int]$h) {
   $bClock = New-Object System.Drawing.SolidBrush($CLOCK)
   $clockText = (Get-Date -Format 'h:mm tt') + "`n" + (Get-Date -Format 'M/d/yyyy')
   $sz = $g.MeasureString($clockText, $fClock)
-  $clockX = $w - $sz.Width - 18
+  $clockPad = 16
+  $clockX = $w - $sz.Width - $clockPad
   $g.DrawString($clockText, $fClock, $bClock, $clockX, ($barY + 6))
   $fClock.Dispose(); $bClock.Dispose()
 
-  # Real tray cluster: app icon, then Wi-Fi, then the clock — so the note
-  # is visibly sitting on that corner, not on a lone pink square.
-  $wifiX = [int]($clockX - 26)
-  Add-Wifi $g $wifiX ($barY + 24)
-  $appIcon = New-AppIcon
-  $iconS = 20
-  $ix = $wifiX - 28
-  $iy = $barY + [int](($barH - $iconS) / 2)
-  $g.DrawImage($appIcon, $ix, $iy, $iconS, $iconS)
-  $appIcon.Dispose()
+  # Win11 notification area. Sized and spaced for a GitHub-half-width shot:
+  # native 32px To-Do mark, Windows MDL2 wifi + volume, real gaps between them.
+  if (-not $trayIcon -or -not (Test-Path $trayIcon)) {
+    throw "missing the live tray icon at $trayIcon"
+  }
+  $appS = 32
+  $glyphS = 24
+  $volX = [int]($clockX - 28 - $glyphS)
+  $wifiX = $volX - 22 - $glyphS
+  $appX = $wifiX - 32 - $appS
+  Add-TrayGlyph $g 0xE767 $volX ($barY + [int](($barH - $glyphS) / 2)) $glyphS
+  Add-TrayGlyph $g 0xE701 $wifiX ($barY + [int](($barH - $glyphS) / 2)) $glyphS
+  $app = [System.Drawing.Image]::FromFile($trayIcon)
+  $iy = $barY + [int](($barH - $appS) / 2)
+  $g.DrawImage($app, $appX, $iy, $appS, $appS)
+  $app.Dispose()
 
   return @($bmp, $g, $barH)
 }
 
-function New-AppIcon {
-  # Same mark the running tray paints: four bars, one ticked green.
-  $bmp = New-Object System.Drawing.Bitmap(32, 32)
-  $g = [System.Drawing.Graphics]::FromImage($bmp)
-  $g.SmoothingMode = 'AntiAlias'
-  $g.Clear([System.Drawing.Color]::Transparent)
-  $bg = [System.Drawing.Color]::FromArgb(15, 15, 17)
-  $border = [System.Drawing.Color]::FromArgb(70, 70, 76)
-  $keep = [System.Drawing.Color]::FromArgb(63, 207, 127)
-  $dim = [System.Drawing.Color]::FromArgb(120, 120, 128)
-  $bBg = New-Object System.Drawing.SolidBrush($bg)
-  $g.FillRectangle($bBg, 1, 1, 30, 30)
-  $pen = New-Object System.Drawing.Pen($border)
-  $g.DrawRectangle($pen, 1, 1, 29, 29)
-  $y = 7
-  foreach ($done in @($false, $true, $false, $false)) {
-    $dotC = if ($done) { $keep } else { $PINK }
-    $barC = if ($done) { $border } else { $dim }
-    $dot = New-Object System.Drawing.SolidBrush($dotC)
-    $g.FillRectangle($dot, 7, $y, 4, 4)
-    $dot.Dispose()
-    $bar = New-Object System.Drawing.SolidBrush($barC)
-    $g.FillRectangle($bar, 14, ($y + 1), 11, 2)
-    $bar.Dispose()
-    $y += 6
+function Get-Mdl2Font([int]$px) {
+  if (-not $script:Mdl2) {
+    $script:Mdl2 = New-Object System.Drawing.Text.PrivateFontCollection
+    $script:Mdl2.AddFontFile('C:\Windows\Fonts\segmdl2.ttf')
   }
-  $pen.Dispose(); $bBg.Dispose(); $g.Dispose()
-  return $bmp
+  return New-Object System.Drawing.Font(
+    $script:Mdl2.Families[0], $px,
+    [System.Drawing.FontStyle]::Regular,
+    [System.Drawing.GraphicsUnit]::Pixel)
 }
 
-function Add-Wifi($g, [int]$cx, [int]$cy) {
-  $ink = [System.Drawing.Color]::FromArgb(200, 202, 208)
-  $pen = New-Object System.Drawing.Pen($ink, 1.8)
-  $pen.StartCap = 'Round'
-  $pen.EndCap = 'Round'
-  $g.DrawArc($pen, ($cx - 9), ($cy - 8), 18, 16, 220, 100)
-  $g.DrawArc($pen, ($cx - 6), ($cy - 5), 12, 11, 220, 100)
-  $dot = New-Object System.Drawing.SolidBrush($ink)
-  $g.FillEllipse($dot, ($cx - 2), ($cy + 3), 4, 4)
-  $pen.Dispose(); $dot.Dispose()
+function Add-TrayGlyph($g, [int]$code, [int]$x, [int]$y, [int]$size) {
+  # Paint the Windows glyph at 4x, then scale down so it stays sharp in the shot.
+  $hi = $size * 4
+  $bmp = New-Object System.Drawing.Bitmap($hi, $hi)
+  $gg = [System.Drawing.Graphics]::FromImage($bmp)
+  $gg.SmoothingMode = 'AntiAlias'
+  $gg.TextRenderingHint = 'AntiAliasGridFit'
+  $gg.Clear([System.Drawing.Color]::Transparent)
+  $font = Get-Mdl2Font ($hi - 8)
+  $brush = New-Object System.Drawing.SolidBrush($CLOCK)
+  $sf = New-Object System.Drawing.StringFormat
+  $sf.Alignment = [System.Drawing.StringAlignment]::Center
+  $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+  $rect = New-Object System.Drawing.RectangleF(0, 0, $hi, $hi)
+  $gg.DrawString([string][char]$code, $font, $brush, $rect, $sf)
+  $font.Dispose(); $brush.Dispose(); $sf.Dispose(); $gg.Dispose()
+  $g.DrawImage($bmp, $x, $y, $size, $size)
+  $bmp.Dispose()
 }
 
 function Add-Shadow($g, [int]$x, [int]$y, [int]$w, [int]$h) {
@@ -175,13 +172,13 @@ function Save-Png($bmp, [string]$path) {
   Write-Host ("  saved " + [IO.Path]::GetFileName($path) + "  " + $kb + " KB")
 }
 
-function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$deskH, [int]$maxNoteH) {
+function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$deskH, [int]$maxNoteH, [string]$trayIcon) {
   $note = [System.Drawing.Image]::FromFile($notePath)
   $scale = 1.0
   if ($note.Height -gt $maxNoteH) { $scale = $maxNoteH / $note.Height }
   $nw = [int]($note.Width * $scale)
   $nh = [int]($note.Height * $scale)
-  $pair = New-Desktop $deskW $deskH
+  $pair = New-Desktop $deskW $deskH $trayIcon
   $bmp = $pair[0]; $g = $pair[1]; $barH = $pair[2]
   # Sit above the tray / clock, top-right - where the real note opens.
   $nx = $deskW - $nw - 36
@@ -207,7 +204,9 @@ New-Store $storeA @(
   (Item 'a8' 'Riah Money' $null $false 'future')
 )
 $noteA = Join-Path $work 'note-a.png'
-Invoke-Poster $storeA $noteA 520 0 2
+$iconA = Join-Path $work 'icon-a.png'
+Invoke-Poster $storeA $noteA 520 0 2 $iconA
+if (-not (Test-Path $iconA)) { throw "live tray icon missing at $iconA" }
 
 # A different day, narrower. Only today's visible thread, so the tally matches
 # what you can actually see (hidden rows were reading as a broken count).
@@ -219,17 +218,19 @@ New-Store $storeB @(
   (Item 'b4' 'Meds in the carry-on' 'b1' $false 'today')
 )
 $noteB = Join-Path $work 'note-b.png'
-Invoke-Poster $storeB $noteB 360 0 2
+$iconB = Join-Path $work 'icon-b.png'
+Invoke-Poster $storeB $noteB 360 0 2 $iconB
+if (-not (Test-Path $iconB)) { throw "live tray icon missing at $iconB" }
 
 # ------------------------------------------------------------------ compose
 Write-Host 'Composing onto a desktop...'
 
-Place-On-Desktop $noteA (Join-Path $out 'note-dark.png') 1280 800 720
-Place-On-Desktop $noteB (Join-Path $out 'note-scrolling.png') 1280 800 380
+Place-On-Desktop $noteA (Join-Path $out 'note-dark.png') 1280 800 720 $iconA
+Place-On-Desktop $noteB (Join-Path $out 'note-scrolling.png') 1280 800 380 $iconB
 
 # Social card: 1200x630, note on the left of a desk strip, promise on the right.
 $note = [System.Drawing.Image]::FromFile($noteA)
-$pair = New-Desktop 1200 630
+$pair = New-Desktop 1200 630 $iconA
 $bmp = $pair[0]; $g = $pair[1]; $barH = $pair[2]
 $scale = 520 / $note.Height
 $nw = [int]($note.Width * $scale); $nh = [int]($note.Height * $scale)

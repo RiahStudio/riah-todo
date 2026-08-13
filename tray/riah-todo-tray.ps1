@@ -1396,6 +1396,9 @@ function Update-TrayIcon {
     }
   }
   $pen.Dispose(); $bg.Dispose(); $g.Dispose()
+  if ($env:RIAH_TODO_TRAY_ICON) {
+    try { $bmp.Save($env:RIAH_TODO_TRAY_ICON, [System.Drawing.Imaging.ImageFormat]::Png) } catch {}
+  }
   $h = $bmp.GetHicon()
   $notify.Icon = [System.Drawing.Icon]::FromHandle($h)
   if ($script:HasNative -and $script:IconHandle -ne [IntPtr]::Zero) {
