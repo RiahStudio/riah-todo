@@ -152,6 +152,12 @@ const page = await fetch(`${base}/`);
 if (!page.ok) fail("the board page itself stopped being served.");
 const asset = await fetch(`${base}/assets/riah-todo.svg`);
 if (!asset.ok) fail("a legitimate asset stopped being served.");
+const font = await fetch(`${base}/assets/fonts/instrument-serif-latin-400-italic.woff2`);
+if (!font.ok) fail("a bundled font stopped being served.");
+const fontType = (font.headers.get("content-type") || "").toLowerCase();
+if (!fontType.includes("font/woff2")) {
+  fail(`woff2 was served as ${fontType || "no content-type"} (Safari needs font/woff2).`);
+}
 
 server.kill();
 console.log(

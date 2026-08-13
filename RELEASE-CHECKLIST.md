@@ -118,6 +118,14 @@ Applied at launch (kept here for the record):
 - [x] `v1.0.1` tagged at `94d4ce5`, ZIP + release notes with screenshots
 - [x] 64/64 `npm test` green before push
 
+## v1.0.2 — 2026-08-13
+
+- [x] Sleep / wake on the note; red-X paint fix on the sleeping bar
+- [x] Same type on Mac and Windows 11 (bundled fonts, Per-Monitor V2, Mac start)
+- [x] `npm run check` green on Windows
+- [x] Publish sweep: 0 blockers
+- [x] Mirror rebuilt, pushed, tagged `v1.0.2`, ZIP from `git archive`
+
 ## Re-release (v1.0.x)
 
 The first release is done, so the gate for the next one is shorter. Run it in

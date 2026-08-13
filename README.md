@@ -2,7 +2,7 @@
 
 ## Direct answer
 
-**Riah To-Do** is a free Windows tray to-do list that opens as a note beside the system clock. It is for people who abandon complex task apps: click the tray icon, write today's list, click away. Data stays in one local JSON file with optional Obsidian filing. Limitations: Windows-first; no cloud sync or accounts; the floating note does not need Node, but the optional board page does.
+**Riah To-Do** is a free to-do list that lives where you already look. On Windows it opens as a note beside the clock. On a Mac it opens as the same-looking page in your browser. Click, write today's list, click away. Data stays in one local JSON file with optional Obsidian filing. Limitations: no cloud sync or accounts; the Windows note does not need Node, but the Mac/board page does.
 
 
 <p align="center">
@@ -12,7 +12,7 @@
 
 **The to-do list you'll actually open.**
 
-It sits by the Windows clock. Click the tray icon, write today's list, click away.
+On Windows it sits by the clock. On a Mac it is a page that looks the same. Write today's list, click away.
 
 We all want to be organized. We've all downloaded twenty different to-do apps to prove it. And most of us never opened one of them twice. Not because we stopped caring, but because opening it was a chore.
 
@@ -22,18 +22,29 @@ This one lives where you already look. Checked-off tasks clear themselves, and l
 
 ## Quick start
 
+**Windows 10 or 11**
+
 1. Download the latest ZIP from [Releases](https://github.com/RiahStudio/riah-todo/releases), or use **Code → Download ZIP**.
 2. Extract it somewhere you'll keep it — `Documents\Riah To-Do` is fine.
 3. Double-click **`Start Riah To-Do.bat`**.
 
-An icon appears by the clock. Click it.
+An icon appears by the clock. Click it. (Windows 11 may hide new icons in the chevron — drag it onto the taskbar once.)
 
 To stop later: **`Stop Riah To-Do.bat`**. For every morning: put a shortcut to `Start Riah To-Do.bat` in `shell:startup`.
 
+**Mac**
+
+1. Same ZIP, extract it somewhere you'll keep it.
+2. Install [Node.js 18+](https://nodejs.org) if you don't have it.
+3. In Terminal: `chmod +x start.sh && ./start.sh`
+
+The board opens in your browser. Same list, same type.
+
 ## Requirements
 
-- **Windows** 10 or 11 (PowerShell 5.1 ships with Windows — nothing else to install for the note)
-- **Node.js** 18+ is optional — only for the board page and the AI tools. The note never needs it.
+- **Windows** 10 or 11 — PowerShell 5.1 ships with Windows; nothing else to install for the note
+- **macOS** — Node.js 18+ (the board is the app; there is no menu-bar note)
+- **Node.js** 18+ is also optional on Windows, for the board page and the AI tools
 
 No accounts with us. No sync. No telemetry.
 
@@ -58,6 +69,7 @@ The icon is the status: one bar per item, green once ticked, and a single green 
 | Shift + right-click a task | Moves it Today → Tomorrow → Later → Today |
 | Drag a row | Reorders among its siblings |
 | Hover a row, click `+` | Starts a subtask (up to six levels) |
+| Hover a row, click `z` | Sleeps it — off the list, not done. Click `N SLEEPING` to see them; **WAKE** puts one back; **BACK TO LIST** returns |
 | Type at the bottom, Enter | Adds an item |
 | Hover a row, click the `x` | Removes it |
 
@@ -65,11 +77,11 @@ Ticking a task ticks its whole thread. Unfinished work carries over tomorrow. Ch
 
 ## The board
 
-Optional fuller page for when a note isn't enough: **`Open The Board.bat`**, or `npm start` then <http://127.0.0.1:8779>. Same list, more room, keyboard-friendly. Prefer the board if you use a screen reader — the note is painted, not real controls.
+On a Mac this *is* the app (`./start.sh`). On Windows it's optional extra room: **`Open The Board.bat`**, or `npm start` then <http://127.0.0.1:8779>. Same list, more space, keyboard-friendly. Prefer the board if you use a screen reader — the Windows note is painted, not real controls.
 
 ## Privacy
 
-- One JSON file in your own `%APPDATA%\Riah To-Do\`
+- One JSON file on your own machine (`%APPDATA%\Riah To-Do\` on Windows, `~/Library/Application Support/Riah To-Do` on a Mac)
 - Nothing leaves your machine
 - No accounts, no sync, no telemetry
 
@@ -91,10 +103,6 @@ npm test
 ```
 
 `npm run smoke:note` needs a real Windows desktop (see `RELEASE-CHECKLIST.md`).
-
-## Buy me a coffee
-
-Free on purpose. If it helped, you can [buy me a coffee](https://buymeacoffee.com/riahstudio).
 
 ## From the maker
 

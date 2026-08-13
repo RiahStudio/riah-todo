@@ -27,9 +27,9 @@
     --keep: #3FCF7F;
     --revise: #E9BA45;
     --discard: #F26D5B;
-    --font-brand: 'Instrument Serif', 'Palatino Linotype', Georgia, serif;
-    --font-ui: 'Space Grotesk', system-ui, 'Segoe UI', sans-serif;
-    --font-mono: 'Space Mono', ui-monospace, Consolas, monospace;
+    --font-brand: 'Instrument Serif', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    --font-ui: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   [data-theme="light"] {
     color-scheme: light;
@@ -56,7 +56,9 @@
     font: 400 15px/1.5 var(--font-ui);
     display: flex;
     justify-content: center;
-    padding: 40px 20px 64px;
+    padding: 40px max(20px, env(safe-area-inset-right)) calc(64px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   main { width: 100%; max-width: 560px; }
@@ -146,6 +148,8 @@
 
   .kill {
     flex: none;
+    display: grid;
+    place-items: center;
     width: 30px;
     height: 30px;
     border: 0;
@@ -236,10 +240,61 @@
   li.section-heading:hover { background: transparent; }
   #list li.section-heading:first-child { padding-top: 4px; }
 
-  /* Which day a task is for. Quiet until you look for it. */
+  .sleeping-block {
+    margin-top: 8px;
+    border-top: 1px solid var(--rule);
+    padding-top: 8px;
+  }
+  .sleeping-block[hidden] { display: none; }
+  .sleeping-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--dim);
+    font: 700 0.68rem/1.2 var(--font-mono);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    cursor: pointer;
+    text-align: left;
+  }
+  .sleeping-toggle:hover,
+  .sleeping-toggle:focus-visible {
+    color: var(--pink);
+    border-color: var(--pink);
+  }
+  .sleeping-toggle[aria-expanded="true"] {
+    color: var(--pink);
+    border-color: var(--pink);
+  }
+  #sleeping { list-style: none; border-top: 0; margin-top: 6px; }
+  #sleeping li .label { color: var(--body); }
+  #sleeping .sleep {
+    opacity: 1;
+    color: var(--pink);
+    border-color: var(--pink);
+  }
+  #sleeping .sub,
+  #sleeping .when { display: none; }
+
+  .row-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+  }
   .when {
     flex: none;
-    min-height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
     padding: 0 8px;
     border: 1px solid var(--rule);
     border-radius: 999px;
@@ -254,17 +309,40 @@
   }
   li:hover .when, li:focus-within .when, .when:focus-visible { opacity: 1; }
   .when:hover { color: var(--pink); border-color: var(--pink); }
-  @media (pointer: coarse) { .when { opacity: 1; } }
+  @media (pointer: coarse) { .when, .sleep { opacity: 1; } }
+
+  .sleep {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--dim);
+    font: 700 0.64rem/1 var(--font-mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
+  li:hover .sleep, li:focus-within .sleep, .sleep:focus-visible { opacity: 1; }
+  .sleep:hover { color: var(--pink); border-color: var(--pink); }
 
   .sub {
     flex: none;
+    display: grid;
+    place-items: center;
     width: 30px;
     height: 30px;
     border: 0;
     border-radius: 5px;
     background: transparent;
     color: var(--dim);
-    font: 400 1.2rem/1 var(--font-ui);
+    font: 400 1.1rem/1 var(--font-ui);
     cursor: pointer;
     opacity: 0;
     transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
@@ -328,8 +406,9 @@
   /* Touch and pen have no hover. Anything that only appears on hover would be
      invisible until activated — so on a coarse pointer, show it always. */
   @media (pointer: coarse) {
-    .kill, .sub, .grip { opacity: 1; }
-    .tick { width: 30px; height: 30px; }
+    .kill, .sub, .grip, .sleep, .when { opacity: 1; }
+    .tick, .sub, .kill { width: 44px; height: 44px; }
+    .when, .sleep { min-height: 44px; }
   }
 
   /* Announcements for screen readers only — visible layout is unchanged. */
@@ -454,6 +533,10 @@
   <div class="tally" id="tally"><strong>—</strong><span>loading</span></div>
 
   <ol id="list"></ol>
+  <div class="sleeping-block" id="sleepingBlock" hidden>
+    <button type="button" class="sleeping-toggle" id="sleepingToggle">0 sleeping</button>
+    <ol id="sleeping" hidden></ol>
+  </div>
   <div class="empty" id="empty" hidden>
     Nothing chosen yet.
     <span>Add what today is actually for.</span>
@@ -533,6 +616,9 @@
 
 <script>
   const listEl = document.getElementById("list");
+  const sleepingEl = document.getElementById("sleeping");
+  const sleepingBlock = document.getElementById("sleepingBlock");
+  const sleepingToggle = document.getElementById("sleepingToggle");
   const emptyEl = document.getElementById("empty");
   const tallyEl = document.getElementById("tally");
   const dateEl = document.getElementById("date");
@@ -549,6 +635,7 @@
   let maxDepth = 5;
   let sections = ["today", "tomorrow", "future"];
   let sectionLabels = { today: "Today", tomorrow: "Tomorrow", future: "Later" };
+  let showSleeping = false;
 
   const stored = localStorage.getItem("riah-todo-theme");
   if (stored) document.documentElement.dataset.theme = stored;
@@ -556,6 +643,10 @@
     const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
     document.documentElement.dataset.theme = next;
     localStorage.setItem("riah-todo-theme", next);
+  });
+  sleepingToggle.addEventListener("click", () => {
+    showSleeping = !showSleeping;
+    render(state);
   });
 
   const liveEl = document.getElementById("live");
@@ -626,32 +717,36 @@
 
   function render(next) {
     state = next;
-    // Only today's work counts. Parking something for later must not inflate
-    // the number — that would defeat the point of parking it.
-    const todays = state.items.filter((item) => (item.section ?? "today") === "today");
+    // Only today's awake work counts. Parking something for later, or putting
+    // it to sleep, must not inflate the number.
+    const todays = state.items.filter((item) =>
+      (item.section ?? "today") === "today" && item.slept !== true);
     const done = todays.filter((item) => item.completed).length;
     const total = todays.length;
+    const sleepingRoots = state.items.filter((item) => item.slept === true && !item.parentId);
 
     dateEl.textContent = state.date
       ? new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" })
           .format(new Date(state.date + "T12:00:00"))
       : "";
 
-    tallyEl.classList.toggle("all-clear", total > 0 && done === total);
+    tallyEl.classList.toggle("all-clear", total > 0 && done === total && sleepingRoots.length === 0);
     tallyEl.innerHTML = total === 0
       ? "<strong>0</strong><span>chosen for today</span>"
       : `<strong>${total - done}</strong><span>left of ${total} — ${done} done</span>`;
 
-    // "Nothing chosen yet" is a lie when the truth is "we could not read it".
-    emptyEl.hidden = state.items.length > 0 || needsRecovery;
+    // "Nothing chosen yet" is a lie when the truth is "we could not read it",
+    // and also when everything is only sleeping.
+    const awake = state.items.filter((item) => item.slept !== true);
+    emptyEl.hidden = awake.length > 0 || sleepingRoots.length > 0 || needsRecovery;
 
     const nodes = [];
     // A heading appears once, above the first task of its group. With only
     // today's work there is nothing to disambiguate, so none is drawn.
-    const used = new Set(state.items.filter((i) => !i.parentId).map((i) => i.section ?? "today"));
+    const used = new Set(awake.filter((i) => !i.parentId).map((i) => i.section ?? "today"));
     const showHeadings = used.size > 1;
     const headed = new Set();
-    for (const item of state.items) {
+    for (const item of awake) {
       const section = item.section ?? "today";
       if (showHeadings && !item.parentId && !headed.has(section)) {
         headed.add(section);
@@ -667,6 +762,28 @@
     }
     listEl.replaceChildren(...nodes);
     if (subtaskFor) listEl.querySelector(".subform input")?.focus();
+
+    sleepingBlock.hidden = sleepingRoots.length === 0;
+    const sleepOpen = showSleeping && sleepingRoots.length > 0;
+    if (sleepOpen) {
+      sleepingToggle.textContent = "Back to the list";
+    } else if (sleepingRoots.length === 1) {
+      sleepingToggle.textContent = "1 sleeping — show them";
+    } else {
+      sleepingToggle.textContent = `${sleepingRoots.length} sleeping — show them`;
+    }
+    sleepingToggle.setAttribute("aria-expanded", String(sleepOpen));
+    if (sleepingRoots.length === 0) showSleeping = false;
+    sleepingEl.hidden = !showSleeping;
+    if (showSleeping) {
+      const sleptNodes = [];
+      for (const item of state.items.filter((entry) => entry.slept === true)) {
+        sleptNodes.push(row(item));
+      }
+      sleepingEl.replaceChildren(...sleptNodes);
+    } else {
+      sleepingEl.replaceChildren();
+    }
   }
 
   function subtaskForm(parent) {
@@ -747,6 +864,8 @@
       li.classList.add("child");
       li.style.setProperty("--depth", String(depth));
     }
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
     if (!item.parentId) {
       const when = document.createElement("button");
       when.type = "button";
@@ -760,9 +879,22 @@
         await run("/api/set-section", { id: item.id, section: nextSection });
         say(`"${item.label}" moved to ${sectionLabels[nextSection]}.`);
       });
-      li.append(when);
+      actions.append(when);
+
+      const sleep = document.createElement("button");
+      sleep.type = "button";
+      sleep.className = "sleep";
+      const asleep = item.slept === true;
+      sleep.textContent = asleep ? "Wake" : "Sleep";
+      sleep.title = asleep ? "Put this back on the list" : "Hide this without completing it";
+      sleep.setAttribute("aria-label", asleep ? `Wake ${item.label}` : `Sleep ${item.label}`);
+      sleep.addEventListener("click", async () => {
+        await run("/api/sleep", { id: item.id, slept: !asleep });
+        say(asleep ? `"${item.label}" is back on the list.` : `"${item.label}" is sleeping.`);
+      });
+      actions.append(sleep);
     }
-    if (depth < maxDepth) {
+    if (depth < maxDepth && item.slept !== true) {
       const sub = document.createElement("button");
       sub.type = "button";
       sub.className = "sub";
@@ -773,10 +905,10 @@
         subtaskFor = subtaskFor === item.id ? null : item.id;
         render(state);
       });
-      li.append(grip, tick, label, sub, kill);
-    } else {
-      li.append(grip, tick, label, kill);
+      actions.append(sub);
     }
+    actions.append(kill);
+    li.append(grip, tick, label, actions);
     wireDrag(li);
     return li;
   }

@@ -7,6 +7,9 @@
 # Click anywhere out: it goes away, and stays away until the icon is clicked again.
 # Click a row     : ticks it off (or un-ticks it). Writes straight to the file.
 # Right-click row : rename / remove / move up / move down.
+# Hover a row, click z : sleeps it (off the list, not done).
+# WAKE on a sleeping row puts it back. BACK TO LIST returns to the list.
+# Hover a row, click + : starts a subtask.
 # Type + Enter    : adds a priority.
 # Esc, or the x   : closes it too.
 # Right-click icon: menu, incl. "Open the board" (the full page).
@@ -119,13 +122,34 @@ try {
     [System.Windows.Forms.UnhandledExceptionMode]::CatchException)
   [System.Windows.Forms.Application]::add_ThreadException({
     param($sender, $e)
-    try { Write-TrayLog ('thread_exception: ' + $e.Exception.Message) } catch {}
+    try {
+      $script:PaintError = $e.Exception.Message
+      Write-TrayLog ('thread_exception: ' + $e.Exception.Message)
+    } catch {}
   })
 } catch {}
 
 Write-TrayLog 'starting'
 Ensure-NativeType | Out-Null
-if ($script:HasNative) { try { $script:DpiAware = [RiahTodo.Native]::SetProcessDPIAware() } catch {} }
+# Per-Monitor V2 (-4) keeps the note sharp at 150% on Win11. Usage's older
+# SetProcessDPIAware-only call is what made that tray look soft and wrongly sized.
+if (-not ('RiahTodoDpi' -as [type])) {
+  try {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class RiahTodoDpi {
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+}
+'@ -Language CSharp -ErrorAction Stop
+  } catch {}
+}
+if ('RiahTodoDpi' -as [type]) {
+  try { $script:DpiAware = [RiahTodoDpi]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch {}
+}
+if (-not $script:DpiAware -and $script:HasNative) {
+  try { $script:DpiAware = [RiahTodo.Native]::SetProcessDPIAware() } catch {}
+}
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 # --- the list on disk (same file Riah Code and the board use) ---
@@ -278,7 +302,11 @@ function Read-Store {
           # for later silently became "today" on the very next read.
           $sec = 'today'
           try { if ($it.section -and @('today','tomorrow','future') -contains [string]$it.section) { $sec = [string]$it.section } } catch {}
-          [void]$items.Add(@{ id = $id; label = $label; completed = $done; completedAt = $at; parentId = $parent; section = $sec })
+          $slept = $false
+          try { $slept = [bool]$it.slept } catch {}
+          $sleptAt = $null
+          try { if ($it.sleptAt) { $sleptAt = [string]$it.sleptAt } } catch {}
+          [void]$items.Add(@{ id = $id; label = $label; completed = $done; completedAt = $at; parentId = $parent; section = $sec; slept = $slept; sleptAt = $sleptAt })
         }
         # A read that returns FEWER tasks than the file holds is the dangerous
         # one: the note shows a short list, the next tick writes it back, and the
@@ -324,6 +352,8 @@ function Read-Store {
           completedAt = $(if ($it.completedAt) { [string]$it.completedAt } else { $null })
           parentId = $(if ($it.parentId) { [string]$it.parentId } else { $null })
           section = $(if ($it.section -and @('today','tomorrow','future') -contains [string]$it.section) { [string]$it.section } else { 'today' })
+          slept = $(if ($it.slept) { [bool]$it.slept } else { $false })
+          sleptAt = $(if ($it.sleptAt) { [string]$it.sleptAt } else { $null })
         })
       }
       $threaded = @(Invoke-Thread @($again.ToArray()))
@@ -357,6 +387,8 @@ function Invoke-Thread($items) {
       completedAt = $i.completedAt
       parentId = $parent
       section = $(if ($i.section -and @('today','tomorrow','future') -contains [string]$i.section) { [string]$i.section } else { 'today' })
+      slept = [bool]$i.slept
+      sleptAt = $i.sleptAt
       depth = 0
     })
   }
@@ -406,8 +438,10 @@ function Invoke-Thread($items) {
       $frame = $stack.Pop()
       $node = $frame.item
       $node.depth = $frame.depth
-      # A thread belongs to one section -- the task's.
+      # A thread belongs to one section -- the task's. Sleeping is the same:
+      # the whole thread is asleep, or none of it is.
       $node.section = [string]$r.section
+      $node.slept = [bool]$r.slept
       [void]$out.Add($node)
       $key = [string]$node.id
       if (-not $kids.ContainsKey($key)) { continue }
@@ -506,6 +540,8 @@ function Write-Store($list) {
         completedAt = $i.completedAt
         parentId = $i.parentId
         section = $i.section
+        slept = [bool]$i.slept
+        sleptAt = $i.sleptAt
       }
     }
     $obj = [ordered]@{ date = [string]$list.date; items = @($rows) }
@@ -732,7 +768,7 @@ function Add-PriorityUnlocked([string]$label, [string]$parentId = $null) {
   }
   $items = New-Object System.Collections.ArrayList
   foreach ($i in @($script:List.items)) { [void]$items.Add($i) }
-  [void]$items.Add(@{ id = New-Id; label = $value; completed = $false; completedAt = $null; parentId = $parentId; section = 'today'; depth = 0 })
+  [void]$items.Add(@{ id = New-Id; label = $value; completed = $false; completedAt = $null; parentId = $parentId; section = 'today'; slept = $false; sleptAt = $null; depth = 0 })
   $script:List.items = @(Invoke-Thread @($items.ToArray()))
   [void](Write-Store $script:List)
   Refresh-Note
@@ -926,6 +962,36 @@ function Set-Parent([string]$id, [string]$parentId) {
 function Set-Section([string]$id, [string]$section) {
   Invoke-Locked { Set-SectionUnlocked $id $section }
 }
+function Set-SleptUnlocked([string]$id, [bool]$slept) {
+  [void](Sync-List $true)
+  $item = $null
+  foreach ($i in @($script:List.items)) { if ($i.id -eq $id) { $item = $i; break } }
+  if ($null -eq $item) { return }
+  # Always sleep the TASK, never a step -- a thread stays whole.
+  $root = $item
+  $guard = 0
+  while ($root.parentId -and $guard -lt 50) {
+    $guard++
+    $next = $null
+    foreach ($p in @($script:List.items)) { if ($p.id -eq $root.parentId) { $next = $p; break } }
+    if ($null -eq $next) { break }
+    $root = $next
+  }
+  $stamp = $null
+  if ($slept) { $stamp = [datetime]::UtcNow.ToString('o') }
+  $root.slept = $slept
+  $root.sleptAt = $stamp
+  foreach ($kid in @(Get-Descendants $root.id)) {
+    $kid.slept = $slept
+    $kid.sleptAt = $stamp
+  }
+  $script:List.items = @(Invoke-Thread @($script:List.items))
+  [void](Write-Store $script:List)
+  Refresh-Note
+}
+function Set-Slept([string]$id, [bool]$slept) {
+  Invoke-Locked { Set-SleptUnlocked $id $slept }
+}
 function Remove-Priority([string]$id) {
   Invoke-Locked { Remove-PriorityUnlocked $id }
 }
@@ -1006,6 +1072,13 @@ $THREAD_INDENT = 24
 # Room above the first task of a group for its heading.
 $SECTION_H = 26
 $PLUS_W = 22
+$SLEEP_W = 22
+# Equal slots for z / + / x, so the glyphs sit on one line instead of drifting.
+$ACTION_SLOT = 22
+# Always-visible Wake on a sleeping row.
+$WAKE_W = 54
+# Room above the add box for the sleeping / back-to-list control.
+$SLEEP_BAR_H = 28
 # Drag a row this far before it counts as reordering rather than a click.
 $ROW_DRAG_SLOP = 5
 # How far in from the top-right corner the note sits the FIRST time, before it
@@ -1063,6 +1136,13 @@ $script:DropAtEnd = $false
 $script:DropAfterId = $null
 $script:RowDragY = 0
 $script:HoverPlus = $false
+$script:HoverSleep = $false
+$script:HoverSleepBar = $false
+$script:HoverSleepHead = $false
+$script:SleepOpen = $false
+$script:SleepRect = $null
+$script:SleepHeadRect = $null
+$script:PaintError = $null
 
 function Get-Indent([int]$depth) {
   # The first step in is full width; deeper ones narrow, so a six-level thread
@@ -1078,7 +1158,9 @@ function Get-Indent([int]$depth) {
 }
 
 function Get-TextWidth([int]$depth = 0) {
-  $w = $script:WinW - (2 * $PAD) - $CHECK - $CHECK_GAP - $KILL_W - $PLUS_W
+  $actions = 3 * $ACTION_SLOT
+  if ($WAKE_W + $ACTION_SLOT -gt $actions) { $actions = $WAKE_W + $ACTION_SLOT }
+  $w = $script:WinW - (2 * $PAD) - $CHECK - $CHECK_GAP - $actions
   return ($w - (Get-Indent $depth))
 }
 
@@ -1086,6 +1168,40 @@ function Get-RowLeft($row) {
   $depth = 0
   if ($null -ne $row.depth) { $depth = [int]$row.depth }
   return ($PAD + (Get-Indent $depth))
+}
+
+# Three equal hit-boxes on the right of a row: kill, plus, sleep. Drawing and
+# clicking use the same boxes, or the glyphs drift off the click.
+function Get-ActionRect($row, [string]$which) {
+  $index = 0
+  if ($which -eq 'plus') { $index = 1 }
+  elseif ($which -eq 'sleep') { $index = 2 }
+  $x = $script:WinW - $PAD - (($index + 1) * $ACTION_SLOT)
+  $y = 0; $h = $ROW_MIN_H
+  if ($null -ne $row) { $y = [int]$row.y; $h = [int]$row.h }
+  return New-Object System.Drawing.Rectangle($x, $y, $ACTION_SLOT, $h)
+}
+
+function Get-WakeRect($row) {
+  $kill = Get-ActionRect $row 'kill'
+  $x = $kill.X - $WAKE_W
+  $y = 0; $h = $ROW_MIN_H
+  if ($null -ne $row) { $y = [int]$row.y; $h = [int]$row.h }
+  return New-Object System.Drawing.Rectangle($x, $y, $WAKE_W, $h)
+}
+
+function Draw-Centered($g, [string]$text, $font, $brush, $rect) {
+  # PowerShell binds DrawString(..., Rectangle, StringFormat) to the PointF
+  # overload and throws. That exception is what WinForms paints as a red X
+  # over the whole note. Use the same x,y DrawString the rest of this file uses.
+  if ($null -eq $g -or $null -eq $font -or $null -eq $brush -or $null -eq $rect) { return }
+  $w = [int]$rect.Width
+  $h = [int]$rect.Height
+  if ($w -le 0 -or $h -le 0) { return }
+  $sz = $g.MeasureString($text, $font)
+  $x = [single]([int]$rect.X + (($w - $sz.Width) / 2))
+  $y = [single]([int]$rect.Y + (($h - $sz.Height) / 2))
+  [void]$g.DrawString($text, $font, $brush, $x, $y)
 }
 
 function Get-HeadHeight($g) {
@@ -1104,9 +1220,18 @@ function Get-HeadHeight($g) {
 
 function Test-HasOtherSections {
   foreach ($i in @($script:List.items)) {
+    if ($i.slept) { continue }
     if (-not $i.parentId -and [string]$i.section -ne 'today') { return $true }
   }
   return $false
+}
+
+function Get-SleepingCount {
+  $n = 0
+  foreach ($i in @($script:List.items)) {
+    if (-not $i.parentId -and $i.slept) { $n++ }
+  }
+  return $n
 }
 
 function Measure-Rows($g) {
@@ -1117,7 +1242,9 @@ function Measure-Rows($g) {
   $top = $PAD + (Get-HeadHeight $g) + $TALLY_H
   # The strip the rows live in: below the tally, above the add box.
   $script:ViewTop = $top
-  $script:ViewBottom = $popup.ClientSize.Height - $PAD - $FOOT_H - 6 - $ADD_H - 4
+  $sleepBar = 0
+  if ((Get-SleepingCount) -gt 0) { $sleepBar = $SLEEP_BAR_H }
+  $script:ViewBottom = $popup.ClientSize.Height - $PAD - $FOOT_H - 6 - $ADD_H - 4 - $sleepBar
   if ($script:ViewBottom -lt ($top + 20)) { $script:ViewBottom = $top + 20 }
   # Clamp against the previous frame's measurements. One frame of lag is
   # invisible and it saves laying every row out twice.
@@ -1128,6 +1255,7 @@ function Measure-Rows($g) {
   $y = $top
   $seenSection = @{}
   foreach ($i in @($script:List.items)) {
+    if ($i.slept) { continue }
     $depth = 0
     if ($null -ne $i.depth) { $depth = [int]$i.depth }
     # A header appears once, above the first task of its group. "Today" is not
@@ -1155,11 +1283,44 @@ function Measure-Rows($g) {
     [void]$rows.Add(@{ id = $i.id; item = $i; y = ($y - $script:ScrollY); h = $h; depth = $depth; child = ($depth -gt 0); header = $header })
     $y += $h + $ROW_GAP_Y
   }
+  if ($script:SleepOpen) {
+    $sleepHead = $false
+    foreach ($i in @($script:List.items)) {
+      if (-not $i.slept) { continue }
+      $depth = 0
+      if ($null -ne $i.depth) { $depth = [int]$i.depth }
+      $header = $null
+      if ($depth -eq 0 -and -not $sleepHead) {
+        $header = 'sleeping'
+        $sleepHead = $true
+      }
+      if ($header) { $y += $SECTION_H }
+      $w = Get-TextWidth $depth
+      if ($w -lt 60) { $w = 60 }
+      $font = if ($i.completed) { $F.RowDone } else { $F.Row }
+      $h = if ($depth -gt 0) { $ROW_MIN_H - 6 } else { $ROW_MIN_H }
+      try {
+        $size = $g.MeasureString([string]$i.label, $font, $w)
+        $needed = [int][Math]::Ceiling($size.Height) + 12
+        if ($needed -gt $h) { $h = $needed }
+      } catch {}
+      [void]$rows.Add(@{ id = $i.id; item = $i; y = ($y - $script:ScrollY); h = $h; depth = $depth; child = ($depth -gt 0); header = $header })
+      $y += $h + $ROW_GAP_Y
+    }
+  }
   $script:Rows = @($rows.ToArray())
   $script:ContentBottom = $y
   # The window is sized from the UNSCROLLED height, or scrolling down would
   # shrink the note out from under itself.
   return $y
+}
+
+function Get-ChromeFloor {
+  # Below this, the SLEEPING bar sits on the only visible row. A height saved
+  # before that bar existed can be too short; grow just enough, never restyle.
+  $sleepBar = 0
+  if ((Get-SleepingCount) -gt 0) { $sleepBar = $SLEEP_BAR_H }
+  return ($PAD + $HEAD_H + $TALLY_H + $ROW_MIN_H + $sleepBar + 8 + $ADD_H + 6 + $FOOT_H + $PAD)
 }
 
 function Measure-Height {
@@ -1173,7 +1334,9 @@ function Measure-Height {
     if ($null -ne $g) { $g.Dispose() }
   }
   if (@($script:List.items).Count -eq 0) { $bottom += 34 }
-  return ($bottom + 8 + $ADD_H + 6 + $FOOT_H + $PAD)
+  $sleepBar = 0
+  if ((Get-SleepingCount) -gt 0) { $sleepBar = $SLEEP_BAR_H }
+  return ($bottom + 8 + $ADD_H + 6 + $FOOT_H + $PAD + $sleepBar)
 }
 
 function Get-Remaining {
@@ -1181,6 +1344,7 @@ function Get-Remaining {
   # number go up -- that would defeat the point of parking it.
   $n = 0
   foreach ($i in @($script:List.items)) {
+    if ($i.slept) { continue }
     if (-not $i.completed -and [string]$i.section -eq 'today') { $n++ }
   }
   return $n
@@ -1188,7 +1352,10 @@ function Get-Remaining {
 
 function Get-TodayCount {
   $n = 0
-  foreach ($i in @($script:List.items)) { if ([string]$i.section -eq 'today') { $n++ } }
+  foreach ($i in @($script:List.items)) {
+    if ($i.slept) { continue }
+    if ([string]$i.section -eq 'today') { $n++ }
+  }
   return $n
 }
 
@@ -1359,10 +1526,11 @@ function Place-Popup {
   # a height is set, that IS the height and the list scrolls inside it. It used
   # to be treated as a floor, which meant a long list could not be pulled back
   # down to something small -- you must be able to make it smaller at any time.
+  $floor = Get-ChromeFloor
   if ($script:UserHSet -and $script:UserMinH -gt 0) {
-    $winH = [Math]::Min([Math]::Max($script:UserMinH, 140), $wa.Height)
+    $winH = [Math]::Min([Math]::Max($script:UserMinH, $floor), $wa.Height)
   } else {
-    $winH = [Math]::Min([Math]::Max($contentH, 160), [int]($wa.Height * 0.95))
+    $winH = [Math]::Min([Math]::Max($contentH, $floor), [int]($wa.Height * 0.95))
   }
   if ($src -eq 'saved') {
     $x = $script:UserPos.X
@@ -1725,6 +1893,7 @@ $script:PaintNote = {
   $g.Clear($C.Bg)
   $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
   $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $script:SleepHeadRect = $null
 
   $bText = New-Object System.Drawing.SolidBrush($C.Text)
   $bDim = New-Object System.Drawing.SolidBrush($C.Dim)
@@ -1773,12 +1942,12 @@ $script:PaintNote = {
   } elseif ($items.Count -eq 0) {
     [void]$g.DrawString('NOTHING CHOSEN YET', $F.Meta, $bFaint, $PAD, ($y + 4))
   } else {
-    $countCol = if ($left -eq 0) { $C.Keep } else { $C.Text }
+    $countCol = if ($left -eq 0 -and (Get-SleepingCount) -eq 0) { $C.Keep } else { $C.Text }
     $bCount = New-Object System.Drawing.SolidBrush($countCol)
     $countTxt = [string]$left
     [void]$g.DrawString($countTxt, $F.Count, $bCount, $PAD, ($y - 4))
     $cw = $g.MeasureString($countTxt, $F.Count).Width
-    $tail = if ($left -eq 0) { 'ALL CLEAR - ' + $done + ' DONE' } else { 'LEFT OF ' + $todayCount + ' - ' + $done + ' DONE' }
+    $tail = if ($left -eq 0 -and (Get-SleepingCount) -eq 0) { 'ALL CLEAR - ' + $done + ' DONE' } else { 'LEFT OF ' + $todayCount + ' - ' + $done + ' DONE' }
     [void]$g.DrawString($tail, $F.Meta, $bFaint, ($PAD + $cw + 2), ($y + 6))
     $bCount.Dispose()
   }
@@ -1797,10 +1966,16 @@ $script:PaintNote = {
       $labelText = switch ($r.header) {
         'tomorrow' { 'TOMORROW' }
         'future'   { 'LATER' }
+        'sleeping' { 'SLEEPING' }
         default    { 'TODAY' }
       }
       $hy = $r.y - $SECTION_H + 6
-      $bSec = New-Object System.Drawing.SolidBrush($C.Faint)
+      if ($r.header -eq 'sleeping') {
+        $script:SleepHeadRect = New-Object System.Drawing.Rectangle(
+          $PAD, ($hy - 4), ($script:WinW - 2 * $PAD), ($SECTION_H + 2))
+      }
+      $headCol = if ($r.header -eq 'sleeping' -and $script:HoverSleepHead) { $C.Brand } else { $C.Faint }
+      $bSec = New-Object System.Drawing.SolidBrush($headCol)
       [void]$g.DrawString($labelText, $F.Meta, $bSec, $PAD, $hy)
       $secW = $g.MeasureString($labelText, $F.Meta).Width
       $secPen = New-Object System.Drawing.Pen($C.Border)
@@ -1846,19 +2021,38 @@ $script:PaintNote = {
         ($left + $CHECK + $CHECK_GAP), ($r.y + 6), $textW, ($r.h - 10))
       [void]$g.DrawString([string]$item.label, $font, $brush, $box)
     }
+    $asleep = [bool]$item.slept
+    $showWake = ($asleep -and [int]$r.depth -eq 0 -and -not $editing -and -not $dragging)
+    if ($showWake) {
+      $wakeRect = Get-WakeRect $r
+      $wakeCol = $C.Brand
+      $bWake = New-Object System.Drawing.SolidBrush($wakeCol)
+      Draw-Centered $g 'WAKE' $F.Meta $bWake $wakeRect
+      $bWake.Dispose()
+    }
     if ($hover -and -not $editing -and -not $dragging) {
-      # "+" starts a subtask under this task. Subtasks do not get one -- nesting
-      # only goes one deep.
-      if ([int]$r.depth -lt $script:MaxDepth) {
-        $plusCol = if ($script:HoverPlus) { $C.Brand } else { $C.Faint }
-        $bPlus = New-Object System.Drawing.SolidBrush($plusCol)
-        [void]$g.DrawString('+', $F.Kill, $bPlus,
-          ($script:WinW - $PAD - 16 - $PLUS_W), ($r.y + [int](($r.h - 18) / 2)))
-        $bPlus.Dispose()
+      # z / + / x share equal boxes and one vertical center. Sleeping rows
+      # drop z and + -- WAKE is already on the row.
+      if (-not $asleep) {
+        $zCol = if ($script:HoverSleep) { $C.Brand } else { $C.Faint }
+        $bZ = New-Object System.Drawing.SolidBrush($zCol)
+        Draw-Centered $g 'z' $F.Kill $bZ (Get-ActionRect $r 'sleep')
+        $bZ.Dispose()
+        if ([int]$r.depth -lt $script:MaxDepth) {
+          $plusCol = if ($script:HoverPlus) { $C.Brand } else { $C.Faint }
+          $bPlus = New-Object System.Drawing.SolidBrush($plusCol)
+          Draw-Centered $g '+' $F.Kill $bPlus (Get-ActionRect $r 'plus')
+          $bPlus.Dispose()
+        }
+      } elseif (-not $showWake) {
+        $zCol = if ($script:HoverSleep) { $C.Brand } else { $C.Faint }
+        $bZ = New-Object System.Drawing.SolidBrush($zCol)
+        Draw-Centered $g 'z' $F.Kill $bZ (Get-ActionRect $r 'sleep')
+        $bZ.Dispose()
       }
       $killCol = if ($script:HoverKill) { $C.Hot } else { $C.Faint }
       $bKill = New-Object System.Drawing.SolidBrush($killCol)
-      [void]$g.DrawString('x', $F.Kill, $bKill, ($script:WinW - $PAD - 16), ($r.y + [int](($r.h - 18) / 2)))
+      Draw-Centered $g 'x' $F.Kill $bKill (Get-ActionRect $r 'kill')
       $bKill.Dispose()
     }
   }
@@ -1925,6 +2119,35 @@ $script:PaintNote = {
   $g.Clip = $oldClip
   $oldClip.Dispose()
 
+  # Sleeping tasks sit off the list. The bar is a control: open them, or
+  # go back to the list. Status-looking copy hid that it was clickable.
+  $script:SleepRect = $null
+  $sleepN = Get-SleepingCount
+  if ($sleepN -gt 0) {
+    $sy = $script:ViewBottom + 2
+    $script:SleepRect = New-Object System.Drawing.Rectangle($PAD, $sy, ($script:WinW - 2 * $PAD), $SLEEP_BAR_H)
+    if ($script:HoverSleepBar) {
+      $barBg = New-Object System.Drawing.SolidBrush($C.Row)
+      $g.FillRectangle($barBg, $script:SleepRect)
+      $barBg.Dispose()
+    }
+    $rule = New-Object System.Drawing.Pen($C.Border)
+    [void]$g.DrawLine($rule, $PAD, $sy, ($script:WinW - $PAD), $sy)
+    $rule.Dispose()
+    $sleepCol = if ($script:HoverSleepBar -or $script:SleepOpen) { $C.Brand } else { $C.Faint }
+    $bSleep = New-Object System.Drawing.SolidBrush($sleepCol)
+    if ($script:SleepOpen) {
+      $sleepTxt = 'BACK TO LIST'
+    } else {
+      $nTxt = if ($sleepN -eq 1) { '1 SLEEPING' } else { ([string]$sleepN) + ' SLEEPING' }
+      $sleepTxt = $nTxt + '  >'
+    }
+    Draw-Centered $g $sleepTxt $F.Meta $bSleep $script:SleepRect
+    $bSleep.Dispose()
+  } else {
+    $script:SleepOpen = $false
+  }
+
   # The scrollbar, drawn only when there is more list than room. Thin, on the
   # right edge of the row strip, and draggable.
   $script:BarRect = $null
@@ -1989,7 +2212,16 @@ $script:PaintNote = {
 
   $bText.Dispose(); $bDim.Dispose(); $bFaint.Dispose(); $bBrand.Dispose(); $pen.Dispose()
 }
-$popup.add_Paint($script:PaintNote)
+$popup.add_Paint({
+  param($s, $e)
+  try {
+    & $script:PaintNote $s $e
+    $script:PaintError = $null
+  } catch {
+    $script:PaintError = $_.Exception.Message
+    Write-TrayLog ('paint_fail ' + $_.Exception.Message)
+  }
+})
 
 function Get-NotePoster([int]$scale) {
   # The note drawn at a multiple of its size: same code, scaled Graphics, so the
@@ -2062,15 +2294,24 @@ function Test-InCheck([System.Drawing.Point]$pt, $row) {
   return ($pt.X -ge ($left - 4) -and $pt.X -lt ($left + $CHECK + 6))
 }
 
-function Test-InKill([System.Drawing.Point]$pt) {
-  return ($pt.X -ge ($script:WinW - $PAD - 24))
+function Test-InKill([System.Drawing.Point]$pt, $row) {
+  if ($null -eq $row) { return $false }
+  return (Get-ActionRect $row 'kill').Contains($pt)
 }
 
 function Test-InPlus([System.Drawing.Point]$pt, $row) {
   # Any row can start a sub-thread, right down to the depth limit.
   if ($null -eq $row -or [int]$row.depth -ge $script:MaxDepth) { return $false }
-  $x0 = $script:WinW - $PAD - 24 - $PLUS_W
-  return ($pt.X -ge $x0 -and $pt.X -lt ($x0 + $PLUS_W))
+  if ([bool]$row.item.slept) { return $false }
+  return (Get-ActionRect $row 'plus').Contains($pt)
+}
+
+function Test-InSleep([System.Drawing.Point]$pt, $row) {
+  if ($null -eq $row) { return $false }
+  if ([bool]$row.item.slept -and [int]$row.depth -eq 0) {
+    return (Get-WakeRect $row).Contains($pt)
+  }
+  return (Get-ActionRect $row 'sleep').Contains($pt)
 }
 
 function Get-DropTarget([System.Drawing.Point]$pt) {
@@ -2186,7 +2427,7 @@ $popup.add_MouseDown({
   if ($null -ne $row) {
     # Arm a row drag. It only becomes a reorder once the pointer actually moves,
     # so a plain click still ticks or edits.
-    if (-not (Test-InKill $pt) -and -not (Test-InPlus $pt $row) -and $script:EditId -ne $row.id) {
+    if (-not (Test-InKill $pt $row) -and -not (Test-InPlus $pt $row) -and -not (Test-InSleep $pt $row) -and $script:EditId -ne $row.id) {
       $script:RowDragId = $row.id
       $script:RowDragArmed = $false
       $script:RowDragFrom = [System.Windows.Forms.Cursor]::Position
@@ -2197,6 +2438,8 @@ $popup.add_MouseDown({
   # the note wherever you want it, the way the meters box moves.
   if ($script:AddRect -and $script:AddRect.Contains($pt)) { return }
   if ($script:BackRect -and $script:BackRect.Contains($pt)) { return }
+  if ($script:SleepRect -and $script:SleepRect.Contains($pt)) { return }
+  if ($script:SleepHeadRect -and $script:SleepHeadRect.Contains($pt)) { return }
   $script:Dragging = $true
   $script:Moved = $false
   $script:DragStart = [System.Windows.Forms.Cursor]::Position
@@ -2220,7 +2463,8 @@ $popup.add_MouseMove({
     if ($script:ResizeEdge -match 'n') { $h = $o.Height - $dy; $y = $o.Y + $dy }
     if ($w -lt $MIN_W) { if ($script:ResizeEdge -match 'w') { $x = $o.X + $o.Width - $MIN_W }; $w = $MIN_W }
     if ($w -gt $MAX_W) { if ($script:ResizeEdge -match 'w') { $x = $o.X + $o.Width - $MAX_W }; $w = $MAX_W }
-    if ($h -lt 140) { if ($script:ResizeEdge -match 'n') { $y = $o.Y + $o.Height - 140 }; $h = 140 }
+    $floor = Get-ChromeFloor
+    if ($h -lt $floor) { if ($script:ResizeEdge -match 'n') { $y = $o.Y + $o.Height - $floor }; $h = $floor }
     $script:WinW = $w
     $script:HeadH = $null
     $popup.SetBounds($x, $y, $w, $h)
@@ -2263,25 +2507,33 @@ $popup.add_MouseMove({
   $id = $null
   if ($null -ne $row) { $id = $row.id }
   $inCheck = Test-InCheck $pt $row
-  $overKill = ($null -ne $row -and (Test-InKill $pt))
+  $overKill = ($null -ne $row -and (Test-InKill $pt $row))
   $overPlus = (Test-InPlus $pt $row)
+  $overSleep = (Test-InSleep $pt $row)
   $overClose = ($script:CloseRect -and $script:CloseRect.Contains($pt))
   $overBack = ($script:BackRect -and $script:BackRect.Contains($pt))
+  $overSleepBar = ($script:SleepRect -and $script:SleepRect.Contains($pt))
+  $overSleepHead = ($script:SleepHeadRect -and $script:SleepHeadRect.Contains($pt))
   if ($id -ne $script:HoverId -or $overKill -ne $script:HoverKill -or
       $overClose -ne $script:HoverClose -or $inCheck -ne $script:HoverCheck -or
-      $overPlus -ne $script:HoverPlus -or $overBack -ne $script:HoverBack) {
+      $overPlus -ne $script:HoverPlus -or $overBack -ne $script:HoverBack -or
+      $overSleep -ne $script:HoverSleep -or $overSleepBar -ne $script:HoverSleepBar -or
+      $overSleepHead -ne $script:HoverSleepHead) {
     $script:HoverId = $id
     $script:HoverKill = $overKill
     $script:HoverClose = $overClose
     $script:HoverCheck = $inCheck
     $script:HoverPlus = $overPlus
     $script:HoverBack = $overBack
+    $script:HoverSleep = $overSleep
+    $script:HoverSleepBar = $overSleepBar
+    $script:HoverSleepHead = $overSleepHead
     $popup.Invalidate()
   }
   # The cursor is the instruction now that the hint line is gone: a hand over the
-  # box, the x and the +, a text caret over the words, arrows on the edges.
+  # box, the x, the + and the z, a text caret over the words, arrows on the edges.
   $popup.Cursor = if ($edge) { Get-CursorForEdge $edge }
-    elseif ($overClose -or $overKill -or $inCheck -or $overPlus -or $overBack) { [System.Windows.Forms.Cursors]::Hand }
+    elseif ($overClose -or $overKill -or $inCheck -or $overPlus -or $overBack -or $overSleep -or $overSleepBar -or $overSleepHead) { [System.Windows.Forms.Cursors]::Hand }
     elseif ($null -ne $row) { [System.Windows.Forms.Cursors]::IBeam }
     elseif ($script:AddRect -and $script:AddRect.Contains($pt)) { [System.Windows.Forms.Cursors]::IBeam }
     else { [System.Windows.Forms.Cursors]::SizeAll }
@@ -2343,11 +2595,28 @@ $popup.add_MouseUp({
   if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
   if ($script:CloseRect -and $script:CloseRect.Contains($pt)) { Dismiss-Note; return }
   if ($script:BackRect -and $script:BackRect.Contains($pt)) { Exit-Subtask; return }
+  if ($script:SleepRect -and $script:SleepRect.Contains($pt)) {
+    $script:SleepOpen = -not $script:SleepOpen
+    Refresh-Note
+    return
+  }
+  if ($script:SleepHeadRect -and $script:SleepHeadRect.Contains($pt)) {
+    $script:SleepOpen = $false
+    Refresh-Note
+    return
+  }
   if ($null -eq $row) {
     if ($script:EditId) { Stop-Edit $true }
     return
   }
-  if (Test-InKill $pt) { Remove-Priority $row.id; return }
+  if (Test-InKill $pt $row) { Remove-Priority $row.id; return }
+  if (Test-InSleep $pt $row) {
+    if ($script:EditId) { Stop-Edit $true }
+    $asleep = [bool]$row.item.slept
+    Set-Slept $row.id (-not $asleep)
+    if (-not $asleep) { $script:SleepOpen = $false }
+    return
+  }
   if (Test-InPlus $pt $row) {
     if ($script:EditId) { Stop-Edit $true }
     Start-Subtask $row.id
@@ -2368,6 +2637,10 @@ $popup.add_MouseLeave({
   $script:HoverKill = $false
   $script:HoverClose = $false
   $script:HoverCheck = $false
+  $script:HoverPlus = $false
+  $script:HoverSleep = $false
+  $script:HoverSleepBar = $false
+  $script:HoverSleepHead = $false
   $popup.Invalidate()
 })
 
@@ -2579,6 +2852,13 @@ if ($script:ShotPath) {
           $later = $null
           foreach ($i in @($script:List.items)) { if ($i.label -eq 'Riah Money') { $later = $i; break } }
           if ($later) { Set-Section $later.id 'future' }
+          # Sleep then wake, so the write path for slept is proven without
+          # hiding the later group from the screenshot.
+          Set-Slept $later.id $true
+          Set-Slept $later.id $false
+          # Sleep it again so the SLEEPING bar is in the shot. Drawing that bar
+          # used to throw, and WinForms replaced the whole note with a red X.
+          Set-Slept $later.id $true
           # Drag it to the very top, thread and all.
           $top = @(Get-TopLevel)[0]
           if ($top -and $top.id -ne $host2.id) { Move-Before $host2.id $top.id }
@@ -2685,6 +2965,12 @@ if ($script:ShotPath) {
         $poster.Dispose()
       }
 
+      $script:PaintError = $null
+      $popup.Refresh()
+      [System.Windows.Forms.Application]::DoEvents()
+      if ($script:PaintError) {
+        throw ('paint threw: ' + $script:PaintError)
+      }
       $bmp = New-Object System.Drawing.Bitmap($popup.Width, $popup.Height)
       # PrintWindow with PW_RENDERFULLCONTENT captures child controls too, so the
       # shot shows the real note -- text box and all -- not just what Paint drew.

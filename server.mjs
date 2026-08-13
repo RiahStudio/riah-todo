@@ -26,6 +26,7 @@ const TYPES = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
   ".json": "application/json; charset=utf-8",
 };
 
@@ -162,6 +163,9 @@ async function handleApi(req, res, urlPath) {
       return;
     case "/api/set-section":
       sendJson(res, 200, { ok: true, priorities: ops.setSection(body.id, body.section) });
+      return;
+    case "/api/sleep":
+      sendJson(res, 200, { ok: true, priorities: ops.setSlept(body.id, body.slept) });
       return;
     case "/api/set-parent":
       sendJson(res, 200, { ok: true, priorities: ops.setParent(body.id, body.parentId ?? null) });

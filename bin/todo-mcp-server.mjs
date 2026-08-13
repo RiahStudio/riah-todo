@@ -27,13 +27,24 @@ try {
 }
 
 function toolResult(priorities) {
-  const text = priorities.items.length === 0
-    ? `Today's Priorities (${priorities.date}) is empty.`
-    : [
-        `Today's Priorities (${priorities.date}):`,
-        ...priorities.items.map((item) => `- [${item.completed ? "x" : " "}] ${item.label}`),
-      ].join("\n");
-  return { content: [{ type: "text", text }] };
+  const awake = priorities.items.filter((item) => !item.slept);
+  const sleeping = priorities.items.filter((item) => item.slept);
+  const lines = [];
+  if (awake.length === 0 && sleeping.length === 0) {
+    lines.push(`Today's Priorities (${priorities.date}) is empty.`);
+  } else {
+    lines.push(`Today's Priorities (${priorities.date}):`);
+    for (const item of awake) {
+      lines.push(`- [${item.completed ? "x" : " "}] ${item.label}`);
+    }
+    if (sleeping.length > 0) {
+      lines.push("", `Sleeping (${sleeping.filter((item) => !item.parentId).length}):`);
+      for (const item of sleeping.filter((item) => !item.parentId)) {
+        lines.push(`- ${item.label}`);
+      }
+    }
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
 function failed(error) {
@@ -44,7 +55,7 @@ function failed(error) {
 }
 
 const server = new McpServer(
-  { name: "riah-todo", version: "1.0.0" },
+  { name: "riah-todo", version: "1.0.2" },
   {
     instructions:
       "Use these tools whenever the user asks to see or change today’s priorities, focus list, or to-do list. "
@@ -136,6 +147,41 @@ server.registerTool(
   async ({ label }) => {
     try {
       return toolResult(ops.removeByLabel(label));
+    } catch (error) {
+      return failed(error);
+    }
+  },
+);
+
+server.registerTool(
+  "sleep_priority",
+  {
+    title: "Sleep a priority",
+    description:
+      "Hide one named item from today's list without completing or removing it. Wake it later with wake_priority.",
+    inputSchema: { label: z.string().min(1).max(120) },
+    annotations: { idempotentHint: true },
+  },
+  async ({ label }) => {
+    try {
+      return toolResult(ops.setSleptByLabel(label, true));
+    } catch (error) {
+      return failed(error);
+    }
+  },
+);
+
+server.registerTool(
+  "wake_priority",
+  {
+    title: "Wake a sleeping priority",
+    description: "Put a sleeping item back on today's list.",
+    inputSchema: { label: z.string().min(1).max(120) },
+    annotations: { idempotentHint: true },
+  },
+  async ({ label }) => {
+    try {
+      return toolResult(ops.setSleptByLabel(label, false));
     } catch (error) {
       return failed(error);
     }

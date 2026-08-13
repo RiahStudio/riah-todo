@@ -100,6 +100,7 @@ if (labels.length !== 9) fail(`expected 9 items after the exercise, got ${JSON.s
 // Sections: something parked for later must come back in its own group, last.
 const parked = list.items.find((item) => item.label === "Riah Money");
 if (parked?.section !== "future") fail(`parking a task for later did not stick: ${JSON.stringify(parked)}`);
+if (!parked?.slept) fail("sleeping a parked task never reached the file — the SLEEPING bar was not in the shot.");
 if (list.items.at(-1)?.label !== "Riah Money") {
   fail(`later work should sort after today's: ${JSON.stringify(labels)}`);
 }
