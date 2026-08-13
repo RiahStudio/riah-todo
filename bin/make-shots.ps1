@@ -124,7 +124,7 @@ function Save-Png($bmp, [string]$path) {
   Write-Host ("  saved " + [IO.Path]::GetFileName($path) + "  " + $kb + " KB")
 }
 
-function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$deskH, [int]$maxNoteH, [string]$caption) {
+function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$deskH, [int]$maxNoteH) {
   $note = [System.Drawing.Image]::FromFile($notePath)
   $scale = 1.0
   if ($note.Height -gt $maxNoteH) { $scale = $maxNoteH / $note.Height }
@@ -138,12 +138,6 @@ function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$d
   if ($ny -lt 24) { $ny = 24 }
   Add-Shadow $g $nx $ny $nw $nh
   $g.DrawImage($note, $nx, $ny, $nw, $nh)
-  if ($caption) {
-    $fCap = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Regular)
-    $bCap = New-Object System.Drawing.SolidBrush($CLOCK)
-    $g.DrawString($caption, $fCap, $bCap, 48, ($deskH - $barH - 36))
-    $fCap.Dispose(); $bCap.Dispose()
-  }
   $g.Dispose(); $note.Dispose()
   Save-Png $bmp $dest
 }
@@ -164,34 +158,30 @@ New-Store $storeA @(
 $noteA = Join-Path $work 'note-a.png'
 Invoke-Poster $storeA $noteA 520 0 2
 
-# ------------------------------------------------------------- the long list
-$long = New-Object System.Collections.ArrayList
-[void]$long.Add((Item 'b1' 'Ship the Gumroad listing' $null $false 'today'))
-[void]$long.Add((Item 'b2' 'Write the description' 'b1' $true 'today'))
-[void]$long.Add((Item 'b3' 'Shoot the cover' 'b1' $false 'today'))
-[void]$long.Add((Item 'b4' 'Call the accountant back' $null $true 'today'))
-[void]$long.Add((Item 'b5' 'Draft the newsletter' $null $false 'today'))
-[void]$long.Add((Item 'b6' 'Chase the invoice from March' $null $false 'today'))
-[void]$long.Add((Item 'b7' 'Book the dentist' $null $false 'today'))
-[void]$long.Add((Item 'b8' 'Renew the domain' $null $false 'today'))
-[void]$long.Add((Item 'b9' 'Reply to Sam about the podcast' $null $false 'today'))
-[void]$long.Add((Item 'b10' 'Selah launch checklist' $null $false 'tomorrow'))
-[void]$long.Add((Item 'b11' 'Write the launch post' 'b10' $false 'tomorrow'))
-[void]$long.Add((Item 'b12' 'Riah Money' $null $false 'future'))
-[void]$long.Add((Item 'b13' 'Look at a proper accountant' $null $false 'future'))
+# A different day, narrower and shorter, so the pair is not the same card twice.
 $storeB = Join-Path $work 'b.json'
-New-Store $storeB $long.ToArray()
+New-Store $storeB @(
+  (Item 'b1' 'Pack for the trip' $null $false 'today'),
+  (Item 'b2' 'Find the charger' 'b1' $false 'today'),
+  (Item 'b3' 'Print the boarding pass' 'b1' $true 'today'),
+  (Item 'b4' 'Meds in the carry-on' 'b1' $false 'today'),
+  (Item 'b5' 'Reply to the landlord' $null $false 'today'),
+  (Item 'b6' 'Pick up the dry cleaning' $null $true 'today'),
+  (Item 'b7' 'Call the vet back' $null $false 'today'),
+  (Item 'b8' "Mom's birthday present" $null $false 'tomorrow'),
+  (Item 'b9' 'Wrap it' 'b8' $false 'tomorrow'),
+  (Item 'b10' 'Write the card' 'b8' $false 'tomorrow'),
+  (Item 'b11' 'Book the oil change' $null $false 'future'),
+  (Item 'b12' 'Sort the photos from June' $null $false 'future')
+)
 $noteB = Join-Path $work 'note-b.png'
-# Short on purpose: a 470px window ate the whole list, so the two shots
-# read as twins. ~340px is a stub by the clock: several rows, then a clip.
-Invoke-Poster $storeB $noteB 500 340 2
+Invoke-Poster $storeB $noteB 360 340 2
 
 # ------------------------------------------------------------------ compose
 Write-Host 'Composing onto a desktop...'
 
-# Same 1280x800 desk. Left is nearly full-height; right is a stub by the clock.
-Place-On-Desktop $noteA (Join-Path $out 'note-dark.png') 1280 800 720 'The whole list'
-Place-On-Desktop $noteB (Join-Path $out 'note-scrolling.png') 1280 800 380 'Shrunk. The rest scrolls.'
+Place-On-Desktop $noteA (Join-Path $out 'note-dark.png') 1280 800 720
+Place-On-Desktop $noteB (Join-Path $out 'note-scrolling.png') 1280 800 380
 
 # Social card: 1200x630, note on the left of a desk strip, promise on the right.
 $note = [System.Drawing.Image]::FromFile($noteA)
