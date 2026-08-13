@@ -6,9 +6,10 @@
 
 
 <p align="center">
-  <img src="docs/screenshots/note-dark.png" width="49%" alt="Riah To-Do — the note open on a Windows desktop above the clock, with today&rsquo;s nested tasks" />
-  <img src="docs/screenshots/note-scrolling.png" width="49%" alt="Riah To-Do — same desktop, a longer list scrolling inside a shorter note" />
+  <img src="docs/screenshots/note-dark.png" width="49%" alt="Riah To-Do — the note open tall, showing today’s nested tasks" />
+  <img src="docs/screenshots/note-scrolling.png" width="49%" alt="Riah To-Do — the same note shrunk by the clock; the long list scrolls inside" />
 </p>
+<p align="center"><em>Left: open all the way.&nbsp;&nbsp;Right: drag it short — the list scrolls, it stays by the clock.</em></p>
 
 **The to-do list you'll actually open.**
 

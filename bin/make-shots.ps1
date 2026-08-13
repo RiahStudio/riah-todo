@@ -124,7 +124,7 @@ function Save-Png($bmp, [string]$path) {
   Write-Host ("  saved " + [IO.Path]::GetFileName($path) + "  " + $kb + " KB")
 }
 
-function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$deskH, [int]$maxNoteH) {
+function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$deskH, [int]$maxNoteH, [string]$caption) {
   $note = [System.Drawing.Image]::FromFile($notePath)
   $scale = 1.0
   if ($note.Height -gt $maxNoteH) { $scale = $maxNoteH / $note.Height }
@@ -138,6 +138,12 @@ function Place-On-Desktop([string]$notePath, [string]$dest, [int]$deskW, [int]$d
   if ($ny -lt 24) { $ny = 24 }
   Add-Shadow $g $nx $ny $nw $nh
   $g.DrawImage($note, $nx, $ny, $nw, $nh)
+  if ($caption) {
+    $fCap = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Regular)
+    $bCap = New-Object System.Drawing.SolidBrush($CLOCK)
+    $g.DrawString($caption, $fCap, $bCap, 48, ($deskH - $barH - 36))
+    $fCap.Dispose(); $bCap.Dispose()
+  }
   $g.Dispose(); $note.Dispose()
   Save-Png $bmp $dest
 }
@@ -176,14 +182,16 @@ $long = New-Object System.Collections.ArrayList
 $storeB = Join-Path $work 'b.json'
 New-Store $storeB $long.ToArray()
 $noteB = Join-Path $work 'note-b.png'
-Invoke-Poster $storeB $noteB 480 470 2
+# Short on purpose: a 470px window ate the whole list, so the two shots
+# read as twins. ~340px is a stub by the clock: several rows, then a clip.
+Invoke-Poster $storeB $noteB 500 340 2
 
 # ------------------------------------------------------------------ compose
 Write-Host 'Composing onto a desktop...'
 
-# Wide desktop shots - note by the clock, like Usage's tray-hover.
-Place-On-Desktop $noteA (Join-Path $out 'note-dark.png') 1280 800 620
-Place-On-Desktop $noteB (Join-Path $out 'note-scrolling.png') 1280 800 470
+# Same 1280x800 desk. Left is nearly full-height; right is a stub by the clock.
+Place-On-Desktop $noteA (Join-Path $out 'note-dark.png') 1280 800 720 'The whole list'
+Place-On-Desktop $noteB (Join-Path $out 'note-scrolling.png') 1280 800 380 'Shrunk. The rest scrolls.'
 
 # Social card: 1200x630, note on the left of a desk strip, promise on the right.
 $note = [System.Drawing.Image]::FromFile($noteA)
