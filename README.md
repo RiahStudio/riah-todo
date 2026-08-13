@@ -7,7 +7,7 @@
 
 <p align="center">
   <img src="docs/screenshots/note-dark.png" width="49%" alt="Riah To-Do — the note open on a Windows desktop above the clock" />
-  <img src="docs/screenshots/note-scrolling.png" width="49%" alt="Riah To-Do — a smaller note by the clock, list scrolling inside" />
+  <img src="docs/screenshots/note-scrolling.png" width="49%" alt="Riah To-Do — a smaller note by the clock" />
 </p>
 
 **The to-do list you'll actually open.**

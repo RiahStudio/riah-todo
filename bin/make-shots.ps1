@@ -96,15 +96,66 @@ function New-Desktop([int]$w, [int]$h) {
 
   $fClock = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Regular)
   $bClock = New-Object System.Drawing.SolidBrush($CLOCK)
-  $clock = (Get-Date -Format 'h:mm tt') + "`n" + (Get-Date -Format 'M/d/yyyy')
-  $sz = $g.MeasureString($clock, $fClock)
-  $g.DrawString($clock, $fClock, $bClock, ($w - $sz.Width - 18), ($barY + 6))
-  # Tiny pink tray mark next to the clock - the product lives here.
-  $pink = New-Object System.Drawing.SolidBrush($PINK)
-  $g.FillRectangle($pink, [int]($w - $sz.Width - 40), [int]($barY + 16), 12, 12)
-  $pink.Dispose(); $fClock.Dispose(); $bClock.Dispose()
+  $clockText = (Get-Date -Format 'h:mm tt') + "`n" + (Get-Date -Format 'M/d/yyyy')
+  $sz = $g.MeasureString($clockText, $fClock)
+  $clockX = $w - $sz.Width - 18
+  $g.DrawString($clockText, $fClock, $bClock, $clockX, ($barY + 6))
+  $fClock.Dispose(); $bClock.Dispose()
+
+  # Real tray cluster: app icon, then Wi-Fi, then the clock — so the note
+  # is visibly sitting on that corner, not on a lone pink square.
+  $wifiX = [int]($clockX - 26)
+  Add-Wifi $g $wifiX ($barY + 24)
+  $appIcon = New-AppIcon
+  $iconS = 20
+  $ix = $wifiX - 28
+  $iy = $barY + [int](($barH - $iconS) / 2)
+  $g.DrawImage($appIcon, $ix, $iy, $iconS, $iconS)
+  $appIcon.Dispose()
 
   return @($bmp, $g, $barH)
+}
+
+function New-AppIcon {
+  # Same mark the running tray paints: four bars, one ticked green.
+  $bmp = New-Object System.Drawing.Bitmap(32, 32)
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.SmoothingMode = 'AntiAlias'
+  $g.Clear([System.Drawing.Color]::Transparent)
+  $bg = [System.Drawing.Color]::FromArgb(15, 15, 17)
+  $border = [System.Drawing.Color]::FromArgb(70, 70, 76)
+  $keep = [System.Drawing.Color]::FromArgb(63, 207, 127)
+  $dim = [System.Drawing.Color]::FromArgb(120, 120, 128)
+  $bBg = New-Object System.Drawing.SolidBrush($bg)
+  $g.FillRectangle($bBg, 1, 1, 30, 30)
+  $pen = New-Object System.Drawing.Pen($border)
+  $g.DrawRectangle($pen, 1, 1, 29, 29)
+  $y = 7
+  foreach ($done in @($false, $true, $false, $false)) {
+    $dotC = if ($done) { $keep } else { $PINK }
+    $barC = if ($done) { $border } else { $dim }
+    $dot = New-Object System.Drawing.SolidBrush($dotC)
+    $g.FillRectangle($dot, 7, $y, 4, 4)
+    $dot.Dispose()
+    $bar = New-Object System.Drawing.SolidBrush($barC)
+    $g.FillRectangle($bar, 14, ($y + 1), 11, 2)
+    $bar.Dispose()
+    $y += 6
+  }
+  $pen.Dispose(); $bBg.Dispose(); $g.Dispose()
+  return $bmp
+}
+
+function Add-Wifi($g, [int]$cx, [int]$cy) {
+  $ink = [System.Drawing.Color]::FromArgb(200, 202, 208)
+  $pen = New-Object System.Drawing.Pen($ink, 1.8)
+  $pen.StartCap = 'Round'
+  $pen.EndCap = 'Round'
+  $g.DrawArc($pen, ($cx - 9), ($cy - 8), 18, 16, 220, 100)
+  $g.DrawArc($pen, ($cx - 6), ($cy - 5), 12, 11, 220, 100)
+  $dot = New-Object System.Drawing.SolidBrush($ink)
+  $g.FillEllipse($dot, ($cx - 2), ($cy + 3), 4, 4)
+  $pen.Dispose(); $dot.Dispose()
 }
 
 function Add-Shadow($g, [int]$x, [int]$y, [int]$w, [int]$h) {
@@ -158,24 +209,17 @@ New-Store $storeA @(
 $noteA = Join-Path $work 'note-a.png'
 Invoke-Poster $storeA $noteA 520 0 2
 
-# A different day, narrower and shorter, so the pair is not the same card twice.
+# A different day, narrower. Only today's visible thread, so the tally matches
+# what you can actually see (hidden rows were reading as a broken count).
 $storeB = Join-Path $work 'b.json'
 New-Store $storeB @(
   (Item 'b1' 'Pack for the trip' $null $false 'today'),
   (Item 'b2' 'Find the charger' 'b1' $false 'today'),
   (Item 'b3' 'Print the boarding pass' 'b1' $true 'today'),
-  (Item 'b4' 'Meds in the carry-on' 'b1' $false 'today'),
-  (Item 'b5' 'Reply to the landlord' $null $false 'today'),
-  (Item 'b6' 'Pick up the dry cleaning' $null $true 'today'),
-  (Item 'b7' 'Call the vet back' $null $false 'today'),
-  (Item 'b8' "Mom's birthday present" $null $false 'tomorrow'),
-  (Item 'b9' 'Wrap it' 'b8' $false 'tomorrow'),
-  (Item 'b10' 'Write the card' 'b8' $false 'tomorrow'),
-  (Item 'b11' 'Book the oil change' $null $false 'future'),
-  (Item 'b12' 'Sort the photos from June' $null $false 'future')
+  (Item 'b4' 'Meds in the carry-on' 'b1' $false 'today')
 )
 $noteB = Join-Path $work 'note-b.png'
-Invoke-Poster $storeB $noteB 360 340 2
+Invoke-Poster $storeB $noteB 360 0 2
 
 # ------------------------------------------------------------------ compose
 Write-Host 'Composing onto a desktop...'
