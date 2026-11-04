@@ -5,7 +5,14 @@
   "license": "MIT",
   "//": "private: this is an app people download from GitHub, not an npm package. It stops an accidental `npm publish`; remove it only if we deliberately choose npm distribution.",
   "private": true,
-  "keywords": ["todo", "tray", "windows", "macos", "productivity", "mcp"],
+  "keywords": [
+    "todo",
+    "tray",
+    "windows",
+    "macos",
+    "productivity",
+    "mcp"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RiahStudio/riah-todo.git"
@@ -30,6 +37,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "zod": "^3.24.0"
+    "zod": "^4.6.7"
   }
 }
