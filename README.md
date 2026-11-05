@@ -1,7 +1,5 @@
 # Riah To-Do
 
-## Direct answer
-
 **Riah To-Do** is a free to-do list that lives where you already look. On Windows it opens as a note beside the clock. On a Mac it opens as the same-looking page in your browser. Click, write today's list, click away. Data stays in one local JSON file with optional Obsidian filing. Limitations: no cloud sync or accounts; the Windows note does not need Node, but the Mac/board page does.
 
 
